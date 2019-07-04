@@ -12,10 +12,12 @@ public class Test : MonoBehaviour
     {
         ScreenLogger.Instance.ShowLog = true;
 
-        for (int j = 0; j < 200; j++)
+        for (int j = 0; j < 20; j++)
         {
             TestMessageTypes();    
         }
+        
+        Daddy.Start();
         
     }
 

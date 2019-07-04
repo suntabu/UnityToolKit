@@ -18,6 +18,15 @@ namespace UnityToolKit.WhoIsYourDaddy
 {
     public class Daddy : MonoBehaviour
     {
+        public static void Start()
+        {
+            var instances = GameObject.FindObjectsOfType<Daddy>();
+            if (instances.Length <= 0)
+            {
+                var go = new GameObject("Daddy",typeof(Daddy));
+            }
+        }
+
         public const string ERROR = "<color=red>{0}</color>";
         public const string WARNING = "<color=yellow>{0}</color>";
         public const string NORMAL = "<color=white>{0}</color>";
