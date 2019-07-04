@@ -13,6 +13,12 @@ using UnityEngine;
 
 namespace UnityToolKit.ConsoleServer
 {
+    
+    
+// TODO:open this to enable this script
+//#define CONSOLE_SERVER
+ 
+    
     public class ConsoleServer : MonoBehaviour
     {
         // We can't use the behaviour reference from other threads, so we use a separate bool
@@ -82,11 +88,13 @@ namespace UnityToolKit.ConsoleServer
 
         void OnDestroy()
         {
-            if (Instance == this) {
+            if (Instance == this)
+            {
                 Stop();
                 mInstance = null;
             }
         }
+
         void Update()
         {
             lock (_lockObject)
@@ -142,7 +150,13 @@ namespace UnityToolKit.ConsoleServer
                     {
                         var ip = addressList[i];
                         if (ip.AddressFamily == AddressFamily.InterNetwork)
-                            return ip.ToString();
+                        {
+                            var ipstr = ip.ToString();
+                            if (ipstr.StartsWith("10.") || ipstr.StartsWith("192.") || ipstr.StartsWith("172."))
+                            {
+                                return ipstr;
+                            }
+                        }
                     }
 
                     return "localhost";
@@ -422,6 +436,11 @@ namespace UnityToolKit.ConsoleServer
 
         public void StartServer(int port = 55055, bool isRegisterLogCallback = true)
         {
+#if !CONSOLE_SERVER
+                return;
+#endif
+
+
             if (!UnityEngine.Debug.isDebugBuild)
             {
                 throw new InvalidOperationException("Console Server 只能在Debug Build中使用！");
