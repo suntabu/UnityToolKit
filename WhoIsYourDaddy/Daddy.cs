@@ -151,8 +151,10 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         void HandleLog(string condition, string stackTrace, LogType type)
         {
-            string logStr = condition + "\n" + stackTrace;
-            isOpen = true;
+            if (type == LogType.Exception || type == LogType.Error)
+            {
+                isOpen = true;
+            }
             switch (type)
             {
                 case LogType.Error:
@@ -183,6 +185,10 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         void Update()
         {
+            if (Input.touchCount >= 8)
+            {
+                isOpen = true;
+            }
         }
 
         Rect DrawMainWindow()
@@ -498,5 +504,7 @@ namespace UnityToolKit.WhoIsYourDaddy
         {
             Daddy.Instance.isOpen = false;
         }
+        
+ 
     }
 }
