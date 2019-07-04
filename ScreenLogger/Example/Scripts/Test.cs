@@ -8,17 +8,15 @@ public class Test : MonoBehaviour
     float timeout = 5, lasttime = -1;
     int i = 0;
 
-    void Start()
+    IEnumerator Start()
     {
         ScreenLogger.Instance.ShowLog = true;
-
-        for (int j = 0; j < 20; j++)
-        {
-            TestMessageTypes();    
-        }
-        
         Daddy.Start();
-        
+        for (int j = 0; j < 15; j++)
+        {
+            Debug.LogError(">>>>>>>>>>>>>>>>>   " + j);
+            yield return new WaitForSeconds(1);
+        }
     }
 
     void Update()
@@ -26,8 +24,8 @@ public class Test : MonoBehaviour
         if (timeout > 0)
             timeout -= Time.deltaTime;
 
-        if ((int)lasttime != (int)timeout && timeout > 0)
-            Debug.Log("-" + ((int)timeout + 1));
+        if ((int) lasttime != (int) timeout && timeout > 0)
+            Debug.Log("-" + ((int) timeout + 1));
 
         lasttime = timeout;
 
@@ -45,8 +43,8 @@ public class Test : MonoBehaviour
         Debug.LogWarning("Warning message...");
         Debug.LogError("Error message...");
     }
-    
-    
+
+
     [DaddyCommand("Log many things")]
     public static void ShowLogWindow()
     {

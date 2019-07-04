@@ -23,7 +23,7 @@ namespace UnityToolKit.WhoIsYourDaddy
             var instances = GameObject.FindObjectsOfType<Daddy>();
             if (instances.Length <= 0)
             {
-                var go = new GameObject("Daddy",typeof(Daddy));
+                var go = new GameObject("Daddy", typeof(Daddy));
             }
         }
 
@@ -40,7 +40,6 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         static List<DaddyCommandAttribute> _attributes = new List<DaddyCommandAttribute>();
 
-        public int ItemHeight = 40;
 
         [Range(0f, 01f)] public float BackgroundOpacity = 0.5f;
         public Color BackgroundColor = Color.black;
@@ -160,10 +159,13 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         void HandleLog(string condition, string stackTrace, LogType type)
         {
+            scrollPos += Vector2.up * 200;
+
             if (type == LogType.Exception || type == LogType.Error)
             {
                 isOpen = true;
             }
+
             switch (type)
             {
                 case LogType.Error:
@@ -230,6 +232,7 @@ namespace UnityToolKit.WhoIsYourDaddy
             return rect;
         }
 
+        private float heightValue;
         Rect DrawLogWindow()
         {
             var width = GUILayout.Width(100);
@@ -248,6 +251,27 @@ namespace UnityToolKit.WhoIsYourDaddy
                         Instance.OpenOrCloseWindow(false);
                     }
 
+                    if (GUILayout.Button("Top", width, height))
+                    {
+                        scrollPos = Vector2.zero;
+                    }
+
+                    if (GUILayout.Button("Bottom", width, height))
+                    {
+                        
+                        scrollPos = new Vector2(0,heightValue);
+                    }
+
+                    if (GUILayout.Button("Up", width, height))
+                    {
+                        scrollPos -= Vector2.up * 50;
+                    }
+
+                    if (GUILayout.Button("Down", width, height))
+                    {
+                        scrollPos += Vector2.up * 50;
+                    }
+
                     GUILayout.EndHorizontal();
                 }
                 GUILayout.EndArea();
@@ -263,6 +287,7 @@ namespace UnityToolKit.WhoIsYourDaddy
                     GUILayout.TextArea(result.ToString(), styleText, GUILayout.ExpandHeight(true));
                     GUI.enabled = true;
                     GUILayout.EndScrollView();
+                    heightValue=GUILayoutUtility.GetLastRect().height;
                 }
                 GUILayout.EndArea();
             }
@@ -513,7 +538,5 @@ namespace UnityToolKit.WhoIsYourDaddy
         {
             Daddy.Instance.isOpen = false;
         }
-        
- 
     }
 }
