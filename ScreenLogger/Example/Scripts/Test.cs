@@ -1,6 +1,7 @@
 ﻿using UnityEngine;
 using System.Collections;
 using AClockworkBerry;
+using UnityToolKit.WhoIsYourDaddy;
 
 public class Test : MonoBehaviour
 {
@@ -11,7 +12,11 @@ public class Test : MonoBehaviour
     {
         ScreenLogger.Instance.ShowLog = true;
 
-        TestMessageTypes();
+        for (int j = 0; j < 200; j++)
+        {
+            TestMessageTypes();    
+        }
+        
     }
 
     void Update()
@@ -32,11 +37,18 @@ public class Test : MonoBehaviour
         }
     }
 
-    void TestMessageTypes()
+    static void TestMessageTypes()
     {
         Debug.Log("Log message...");
         Debug.LogWarning("Warning message...");
         Debug.LogError("Error message...");
+    }
+    
+    
+    [DaddyCommand("Log many things")]
+    public static void ShowLogWindow()
+    {
+        TestMessageTypes();
     }
 }
 

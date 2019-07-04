@@ -3,7 +3,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using AClockworkBerry;
 using UnityEngine;
@@ -16,39 +18,20 @@ namespace UnityToolKit.WhoIsYourDaddy
 {
     public class Daddy : MonoBehaviour
     {
-        public const string DONE = ">> DONE";
-        public const string ERROR = ">> ERROR : {0}";
-        public const string MSG   = ">> {0}";
+        public const string ERROR = "<color=red>{0}</color>";
+        public const string WARNING = "<color=yellow>{0}</color>";
+        public const string NORMAL = "<color=white>{0}</color>";
+        public const string DONE = ">>> DONE <<<\n";
+        public const string MSG = ">> {0}";
         public const string MSG_1 = "    {0}";
         public const string MSG_2 = "     {0}";
-        public static bool IsPersistent = true;
 
         private static Daddy instance;
         private static bool instantiated = false;
 
         static List<DaddyCommandAttribute> _attributes = new List<DaddyCommandAttribute>();
 
-        public enum PanelAnchor
-        {
-            TopLeft,
-            TopRight,
-            BottomLeft,
-            BottomRight
-        }
-
-        [Tooltip("Height of the log area as a percentage of the screen height")] [Range(0.3f, 1.0f)]
-        public float Height = 0.5f;
-
-        [Tooltip("Width of the log area as a percentage of the screen width")] [Range(0.3f, 1.0f)]
-        public float Width = 0.5f;
-
-        public int Margin = 20;
-
         public int ItemHeight = 40;
-
-        public PanelAnchor AnchorPosition = PanelAnchor.BottomLeft;
-
-        public int FontSize = 25;
 
         [Range(0f, 01f)] public float BackgroundOpacity = 0.5f;
         public Color BackgroundColor = Color.black;
@@ -57,7 +40,7 @@ namespace UnityToolKit.WhoIsYourDaddy
         int padding = 5;
 
         private bool destroying = false;
-        public bool ShowInEditor = true;
+        private int mSelect = -1, mLastSelect;
 
         public static Daddy Instance
         {
@@ -100,6 +83,9 @@ namespace UnityToolKit.WhoIsYourDaddy
 #if daddy
         public void Awake()
         {
+            Application.logMessageReceived += HandleLog;
+
+
             Daddy[] obj = GameObject.FindObjectsOfType<Daddy>();
 
             if (obj.Length > 1)
@@ -114,9 +100,9 @@ namespace UnityToolKit.WhoIsYourDaddy
 
             InitStyles();
 
-            if (IsPersistent)
-                DontDestroyOnLoad(this);
-
+#if !UNITY_EDITOR
+            DontDestroyOnLoad(this);
+#endif
             _attributes = new List<DaddyCommandAttribute>(16);
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -129,9 +115,9 @@ namespace UnityToolKit.WhoIsYourDaddy
                         if (attrs.Length == 0)
                             continue;
 
-                        Func<string, string> cbm =
-                            Delegate.CreateDelegate(typeof(Func<string, string>), method,
-                                false) as Func<string, string>;
+                        Action cbm =
+                            Delegate.CreateDelegate(typeof(Action), method,
+                                false) as Action;
                         if (cbm == null)
                         {
                             Debug.LogError(string.Format("Method {0}.{1} takes the wrong arguments for a rule checker.",
@@ -152,18 +138,9 @@ namespace UnityToolKit.WhoIsYourDaddy
                 }
             }
 
-            inputStrs = new string[_attributes.Count];
+            inputStrs = _attributes.Select(t => t.msg).ToArray();
         }
 
-        void OnEnable()
-        {
-            if (!ShowInEditor && Application.isEditor) return;
-
-            Application.logMessageReceived += HandleLog;
-#if UNITY_EDITOR
-            isOpen = true;
-#endif
-        }
 
         void OnDisable()
         {
@@ -174,116 +151,134 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         void HandleLog(string condition, string stackTrace, LogType type)
         {
-            string logStr = IsLogStack ? condition + "\n" + stackTrace : condition;
-
+            string logStr = condition + "\n" + stackTrace;
+            isOpen = true;
             switch (type)
             {
                 case LogType.Error:
                 case LogType.Assert:
-                    PrintResult(string.Format(Daddy.ERROR, logStr));
+                case LogType.Exception:
+                    PrintResult(Daddy.ERROR, condition, stackTrace);
                     break;
                 case LogType.Warning:
-//                   PrintResult(string.Format(Daddy.ERROR,logStr));
+                    PrintResult(Daddy.WARNING, condition, stackTrace);
                     break;
                 case LogType.Log:
-//                    PrintResult(string.Format(Daddy.MSG,logStr));
-                    break;
-                case LogType.Exception:
-                    PrintResult(string.Format(Daddy.ERROR, logStr));
+                    PrintResult(Daddy.NORMAL, condition, stackTrace);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException("type", type, null);
             }
         }
 
-        void PrintResult(string res)
+        void PrintResult(string formater, string condition, string stackTrace)
         {
-            if (result.Length >= 1500)
+            if (result.Length >= 10000)
             {
-                result = string.Empty;
+                result.Remove(0, result.Length);
             }
 
-            result += "\n" + res;
+            result.AppendFormat(formater, string.Format("<b>{0}</b>\n<size=14>{1}</size>\n\n", condition, stackTrace));
         }
 
         void Update()
         {
-            if (!ShowInEditor && Application.isEditor) return;
+        }
 
-            CheckVibrate();
+        Rect DrawMainWindow()
+        {
+            float w = Screen.width;
+            float h = Screen.height;
+            float x = 1, y = 1;
+
+            var rect = new Rect(x, y, w, h);
+            GUILayout.BeginArea(rect, styleContainer);
+            {
+                GUILayout.BeginScrollView(scrollPos);
+                {
+                    mSelect = GUILayout.SelectionGrid(mSelect, inputStrs, 4, GUILayout.MinHeight(150));
+                    if (mSelect != mLastSelect)
+                    {
+                        if (mSelect >= 0 && mSelect < _attributes.Count)
+                        {
+                            _attributes[mSelect].CommandInvoker.Invoke();
+                            mSelect = -1;
+                        }
+
+                        mLastSelect = mSelect;
+                    }
+
+                    GUILayout.EndScrollView();
+                }
+                GUILayout.EndArea();
+            }
+            return rect;
+        }
+
+        Rect DrawLogWindow()
+        {
+            var width = GUILayout.Width(100);
+            var height = GUILayout.Height(60);
+            GUILayout.BeginArea(new Rect(1, 1, Screen.width - 2, 70), styleContainer);
+            {
+                GUILayout.BeginHorizontal();
+                {
+                    if (GUILayout.Button("Clear", width, height))
+                    {
+                        result.Remove(0, result.Length);
+                    }
+
+                    if (GUILayout.Button("Hide", width, height))
+                    {
+                        Instance.OpenOrCloseWindow(false);
+                    }
+
+                    GUILayout.EndHorizontal();
+                }
+                GUILayout.EndArea();
+            }
+
+            var rect = new Rect(1, 70, Screen.width - 2, Screen.height - 72);
+            GUILayout.BeginArea(rect, styleContainer);
+            {
+                GUILayout.BeginScrollView(scrollPos);
+                {
+                    GUI.enabled = false;
+                    rect.y = 1;
+                    GUILayout.TextArea(result.ToString(), styleText, GUILayout.ExpandHeight(true));
+                    GUI.enabled = true;
+                    GUILayout.EndScrollView();
+                }
+                GUILayout.EndArea();
+            }
+            return rect;
         }
 
         void OnGUI()
         {
-            if (!ShowInEditor && Application.isEditor || !isOpen) return;
+            if (!isOpen) return;
 
-            styleText = GUI.skin.textArea;
-            styleText.alignment = TextAnchor.LowerLeft;
-
-            float w = (Screen.width - 2 * Margin) * Width;
-            float h = (Screen.height - 2 * Margin) * Height;
-            float x = 1, y = 1;
-
-            switch (AnchorPosition)
+            if (styleText == null)
             {
-                case PanelAnchor.BottomLeft:
-                    x = Margin;
-                    y = Margin + (Screen.height - 2 * Margin) * (1 - Height);
-                    break;
-
-                case PanelAnchor.BottomRight:
-                    x = Margin + (Screen.width - 2 * Margin) * (1 - Width);
-                    y = Margin + (Screen.height - 2 * Margin) * (1 - Height);
-                    break;
-
-                case PanelAnchor.TopLeft:
-                    x = Margin;
-                    y = Margin;
-                    break;
-
-                case PanelAnchor.TopRight:
-                    x = Margin + (Screen.width - 2 * Margin) * (1 - Width);
-                    y = Margin;
-                    break;
+                styleText = GUI.skin.textArea;
+                styleText.richText = true;
+                styleText.alignment = TextAnchor.LowerLeft;
             }
-            float scrollHeight = _attributes.Count * ItemHeight * 3;
-            scrollHeight = scrollHeight < h ? h : scrollHeight;
 
-            GUILayout.BeginArea(new Rect(x, y, w, h), styleContainer);
-//            Debug.Log("----> " + Event.current.type);
-            var scrollViewRect = new Rect(0, 0, w, h / 2);
-            scrollPos = GUI.BeginScrollView(scrollViewRect, scrollPos,
-                new Rect(0, 0, w - 6 * padding, scrollHeight), false,
-                false);
-            GUILayout.BeginArea(new Rect(0, 0, w, scrollHeight), styleContainer);
-            for (var index = 0; index < _attributes.Count; index++)
+
+            Rect scrollViewRect;
+
+
+            if (isLogWindowOpen)
             {
-                var attribute = _attributes[index];
-
-
-                var rectX = padding;
-                var rectY = (ItemHeight * 2 + padding * 6) * index + padding;
-                var rectWidth = w - 6 * padding;
-                var rectHeight = ItemHeight;
-                var rect = new Rect(rectX, rectY, rectWidth, rectHeight);
-                GUI.Label(rect, attribute.msg, styleContainer);
-
-                GUILayout.BeginHorizontal();
-                rect.width = w / 2f - 4 * padding;
-                rect.y += ItemHeight + padding;
-                inputStrs[index] = GUI.TextField(rect, inputStrs[index] ?? "", styleContainer);
-
-                rect.x = rect.width + 3 * padding;
-                if (GUI.Button(rect, "RUN", styleButton))
-                {
-                    PrintResult(attribute.CommandInvoker.Invoke(inputStrs[index]));
-                }
-                GUILayout.EndHorizontal();
+                scrollViewRect = DrawLogWindow();
             }
-            GUILayout.EndArea();
-            GUI.EndScrollView();
-/* Move by mouse drag */
+            else
+            {
+                scrollViewRect = DrawMainWindow();
+            }
 
+            /* Move by mouse drag */
             // Check if the mouse is above our scrollview.
             if (scrollViewRect.Contains(Event.current.mousePosition))
             {
@@ -293,36 +288,16 @@ namespace UnityToolKit.WhoIsYourDaddy
                     Event.current.Use();
                 }
             }
-
-            GUI.TextArea(new Rect(0, h / 2, w, h / 2), result);
-
-            GUILayout.EndArea();
         }
 #endif
         Vector2 scrollPos = Vector2.one;
         private string[] inputStrs;
-        string result = "";
-        private bool m_isOpen = false;
+        StringBuilder result = new StringBuilder();
 
-
-        private const string LogStackKey = "LogStackKey";
-
-        private bool IsLogStack
-        {
-            get { return PlayerPrefs.GetString(LogStackKey, "0") == "1"; }
-        }
 
         private Action<string> OnUnityLog;
 
-        private bool isOpen
-        {
-            get { return m_isOpen; }
-            set
-            {
-                m_isOpen = value;
-//                EventSystem.current.enabled = !m_isOpen;
-            }
-        }
+        public bool isOpen, isLogWindowOpen;
 
 
         public void InspectorGUIUpdated()
@@ -371,36 +346,9 @@ namespace UnityToolKit.WhoIsYourDaddy
         private const float m_interval = 1f;
         private float m_delta = 0f;
 
-        private void CheckVibrate()
+        public void OpenOrCloseWindow(bool isOpen)
         {
-            m_delta += Time.deltaTime;
-            if (m_delta < m_interval)
-            {
-                return;
-            }
-
-            m_newAcceleration = Input.acceleration;
-            m_detalAcceleration = m_newAcceleration - m_oldAcceleration;
-            m_oldAcceleration = m_newAcceleration;
-
-            if (m_detalAcceleration.x > m_checkValue ||
-                m_detalAcceleration.y > m_checkValue ||
-                m_detalAcceleration.z > m_checkValue)
-            {
-                isOpen = !isOpen;
-                m_delta = 0;
-#if UNITY_ANDROID
-
-                /// 手机震动  
-                Handheld.Vibrate();
-
-                /////同样是震动，但是这个接口已经过时的，不要用了  
-                //iPhoneUtils.Vibrate();  
-#elif UNIYT_IPHONE
-/// 手机震动，是不是这个接口,没测试过  
-            Handheld.Vibrate();  
-#endif
-            }
+            this.isLogWindowOpen = isOpen;
         }
     }
 
@@ -417,13 +365,13 @@ namespace UnityToolKit.WhoIsYourDaddy
         }
 
 
-        public Func<string, string> CommandInvoker;
+        public Action CommandInvoker;
     }
 
 
     public class DaddyCommands
     {
-        [DaddyCommand("Load a scene with its name")]
+//        [DaddyCommand("Load a scene with its name")]
         public static string LoadScene(string sceneName)
         {
             try
@@ -437,7 +385,7 @@ namespace UnityToolKit.WhoIsYourDaddy
             }
         }
 
-        [DaddyCommand("Show all audioclip in scene")]
+//        [DaddyCommand("Show all audioclip in scene")]
         public static string ShowPlayingSound(string para)
         {
             try
@@ -464,7 +412,7 @@ namespace UnityToolKit.WhoIsYourDaddy
             }
         }
 
-        [DaddyCommand("Check whether a gameobject exists")]
+//        [DaddyCommand("Check whether a gameobject exists")]
         public static string CheckGameObjectExist(string path)
         {
             try
@@ -478,7 +426,7 @@ namespace UnityToolKit.WhoIsYourDaddy
             }
         }
 
-        [DaddyCommand("Write key/STRING value to playerprefs, use ',' to split")]
+//        [DaddyCommand("Write key/STRING value to playerprefs, use ',' to split")]
         public static string WriteKeyStringValue(string vals)
         {
             try
@@ -497,8 +445,8 @@ namespace UnityToolKit.WhoIsYourDaddy
                 return string.Format(Daddy.ERROR, e.Message);
             }
         }
-        
-        [DaddyCommand("Write key/INT value to playerprefs, use ',' to split")]
+
+//        [DaddyCommand("Write key/INT value to playerprefs, use ',' to split")]
         public static string WriteKeyIntValue(string vals)
         {
             try
@@ -517,9 +465,9 @@ namespace UnityToolKit.WhoIsYourDaddy
                 return string.Format(Daddy.ERROR, e.Message);
             }
         }
-        
-        
-        [DaddyCommand("Write key/FLOAT value to playerprefs, use ',' to split")]
+
+
+//        [DaddyCommand("Write key/FLOAT value to playerprefs, use ',' to split")]
         public static string WriteKeyFloatValue(string vals)
         {
             try
@@ -537,6 +485,18 @@ namespace UnityToolKit.WhoIsYourDaddy
             {
                 return string.Format(Daddy.ERROR, e.Message);
             }
+        }
+
+        [DaddyCommand("Show log window")]
+        public static void ShowLogWindow()
+        {
+            Daddy.Instance.OpenOrCloseWindow(true);
+        }
+
+        [DaddyCommand("Hide This")]
+        public static void HideMainWindow()
+        {
+            Daddy.Instance.isOpen = false;
         }
     }
 }
