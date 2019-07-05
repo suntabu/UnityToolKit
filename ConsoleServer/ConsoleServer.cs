@@ -1129,7 +1129,7 @@ end
 
         private static void LogToFile(string log, LogType type)
         {
-            var newLog = string.Format("{0} : {1}", DateTime.Now.ToShortTimeString(), log);
+            var newLog = string.Format("{0} : {1}", DateTime.Now.ToString(), log);
 
             switch (type)
             {

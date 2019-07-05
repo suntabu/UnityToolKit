@@ -2,17 +2,12 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
-using System.Runtime.InteropServices;
 using System.Text;
-using AClockworkBerry;
 using UnityEngine;
-using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using Debug = UnityEngine.Debug;
-using Object = UnityEngine.Object;
 
 namespace UnityToolKit.WhoIsYourDaddy
 {
@@ -27,9 +22,9 @@ namespace UnityToolKit.WhoIsYourDaddy
             }
         }
 
-        public const string ERROR = "<color=red>{0}</color>";
-        public const string WARNING = "<color=yellow>{0}</color>";
-        public const string NORMAL = "<color=white>{0}</color>";
+        public const string ERROR = "{0}:\n<color=red>{1}</color>";
+        public const string WARNING = "{0}:\n<color=yellow>{1}</color>";
+        public const string NORMAL = "{0}:\n<color=white>{1}</color>";
         public const string DONE = ">>> DONE <<<\n";
         public const string MSG = ">> {0}";
         public const string MSG_1 = "    {0}";
@@ -40,7 +35,6 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         static List<DaddyCommandAttribute> _attributes = new List<DaddyCommandAttribute>();
 
-
         [Range(0f, 01f)] public float BackgroundOpacity = 0.5f;
         public Color BackgroundColor = Color.black;
 
@@ -49,6 +43,17 @@ namespace UnityToolKit.WhoIsYourDaddy
 
         private bool destroying = false;
         private int mSelect = -1, mLastSelect;
+
+
+        public enum PrintType
+        {
+            Error,
+            Warning,
+            Normal,
+            All,
+        }
+
+        private PrintType mPrintType = PrintType.All;
 
         public static Daddy Instance
         {
@@ -171,28 +176,59 @@ namespace UnityToolKit.WhoIsYourDaddy
                 case LogType.Error:
                 case LogType.Assert:
                 case LogType.Exception:
-                    PrintResult(Daddy.ERROR, condition, stackTrace);
+                    AddLogEntry(PrintType.Error, Daddy.ERROR, condition, stackTrace);
                     break;
                 case LogType.Warning:
-                    PrintResult(Daddy.WARNING, condition, stackTrace);
+                    AddLogEntry(PrintType.Warning, Daddy.WARNING, condition, stackTrace);
                     break;
                 case LogType.Log:
-                    PrintResult(Daddy.NORMAL, condition, stackTrace);
+                    AddLogEntry(PrintType.Normal, Daddy.NORMAL, condition, stackTrace);
                     break;
                 default:
                     throw new ArgumentOutOfRangeException("type", type, null);
             }
         }
 
-        void PrintResult(string formater, string condition, string stackTrace)
+        void AddLogEntry(PrintType pt, string formater, string condition, string stackTrace)
         {
-            if (result.Length >= 10000)
+            var logMessage = string.Format("<b>{0}</b>\n<size=14>{1}</size>\n\n", condition, stackTrace);
+            switch (pt)
             {
-                result.Remove(0, result.Length);
+                case PrintType.Error:
+                    errorLog.AppendFormat(formater, DateTime.Now.ToString(), logMessage);
+                    break;
+                case PrintType.Warning:
+                    warningLog.AppendFormat(formater, DateTime.Now.ToString(), logMessage);
+                    break;
+                case PrintType.Normal:
+                    normalLog.AppendFormat(formater, DateTime.Now.ToString(), logMessage);
+                    break;
             }
 
-            result.AppendFormat(formater, string.Format("<b>{0}</b>\n<size=14>{1}</size>\n\n", condition, stackTrace));
+            allLog.AppendFormat(formater, DateTime.Now.ToString(), logMessage);
         }
+
+        string PrintEntries()
+        {
+            switch (mPrintType)
+            {
+                case PrintType.Error:
+                    return errorLog.ToString();
+                    break;
+                case PrintType.Warning:
+                    return warningLog.ToString();
+                    break;
+                case PrintType.Normal:
+                    return normalLog.ToString();
+                    break;
+                case PrintType.All:
+                    return allLog.ToString();
+                    break;
+            }
+
+            return string.Empty;
+        }
+
 
         void Update()
         {
@@ -233,6 +269,7 @@ namespace UnityToolKit.WhoIsYourDaddy
         }
 
         private float heightValue;
+
         Rect DrawLogWindow()
         {
             var width = GUILayout.Width(100);
@@ -243,7 +280,7 @@ namespace UnityToolKit.WhoIsYourDaddy
                 {
                     if (GUILayout.Button("Clear", width, height))
                     {
-                        result.Remove(0, result.Length);
+                        errorLog.Remove(0, errorLog.Length);
                     }
 
                     if (GUILayout.Button("Hide", width, height))
@@ -256,10 +293,9 @@ namespace UnityToolKit.WhoIsYourDaddy
                         scrollPos = Vector2.zero;
                     }
 
-                    if (GUILayout.Button("Bottom", width, height))
+                    if (GUILayout.Button("Bottom:" + heightValue, width, height))
                     {
-                        
-                        scrollPos = new Vector2(0,heightValue);
+                        scrollPos = new Vector2(0, Mathf.Infinity);
                     }
 
                     if (GUILayout.Button("Up", width, height))
@@ -272,6 +308,26 @@ namespace UnityToolKit.WhoIsYourDaddy
                         scrollPos += Vector2.up * 50;
                     }
 
+                    if (GUILayout.Button("Error", width, height))
+                    {
+                        mPrintType = PrintType.Error;
+                    }
+
+                    if (GUILayout.Button("Warning", width, height))
+                    {
+                        mPrintType = PrintType.Warning;
+                    }
+
+                    if (GUILayout.Button("Info", width, height))
+                    {
+                        mPrintType = PrintType.Normal;
+                    }
+
+                    if (GUILayout.Button("All", width, height))
+                    {
+                        mPrintType = PrintType.All;
+                    }
+
                     GUILayout.EndHorizontal();
                 }
                 GUILayout.EndArea();
@@ -280,14 +336,13 @@ namespace UnityToolKit.WhoIsYourDaddy
             var rect = new Rect(1, 70, Screen.width - 2, Screen.height - 72);
             GUILayout.BeginArea(rect, styleContainer);
             {
-                GUILayout.BeginScrollView(scrollPos);
+                scrollPos = GUILayout.BeginScrollView(scrollPos);
                 {
                     GUI.enabled = false;
                     rect.y = 1;
-                    GUILayout.TextArea(result.ToString(), styleText, GUILayout.ExpandHeight(true));
+                    GUILayout.Label(PrintEntries(), styleText);
                     GUI.enabled = true;
                     GUILayout.EndScrollView();
-                    heightValue=GUILayoutUtility.GetLastRect().height;
                 }
                 GUILayout.EndArea();
             }
@@ -332,7 +387,10 @@ namespace UnityToolKit.WhoIsYourDaddy
 #endif
         Vector2 scrollPos = Vector2.one;
         private string[] inputStrs;
-        StringBuilder result = new StringBuilder();
+        StringBuilder errorLog = new StringBuilder();
+        StringBuilder warningLog = new StringBuilder();
+        StringBuilder normalLog = new StringBuilder();
+        StringBuilder allLog = new StringBuilder();
 
 
         private Action<string> OnUnityLog;
