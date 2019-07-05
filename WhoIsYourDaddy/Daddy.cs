@@ -281,6 +281,10 @@ namespace UnityToolKit.WhoIsYourDaddy
                     if (GUILayout.Button("Clear", width, height))
                     {
                         errorLog.Remove(0, errorLog.Length);
+                        warningLog.Remove(0, warningLog.Length);
+                        normalLog.Remove(0, normalLog.Length);
+                        allLog.Remove(0, allLog.Length);
+                        
                     }
 
                     if (GUILayout.Button("Hide", width, height))
