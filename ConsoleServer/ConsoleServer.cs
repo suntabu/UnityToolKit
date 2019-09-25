@@ -1,9 +1,14 @@
+// TODO:open this to enable this script
+
+//#define CONSOLE_SERVER
+
 using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Text;
@@ -13,12 +18,6 @@ using UnityEngine;
 
 namespace UnityToolKit.ConsoleServer
 {
-    
-    
-// TODO:open this to enable this script
-//#define CONSOLE_SERVER
- 
-    
     public class ConsoleServer : MonoBehaviour
     {
         // We can't use the behaviour reference from other threads, so we use a separate bool
@@ -83,6 +82,7 @@ namespace UnityToolKit.ConsoleServer
         {
             _mainThread = Thread.CurrentThread;
             fileRoot = Application.persistentDataPath + "/";
+            cacheRoot = Application.temporaryCachePath + "/";
             DontDestroyOnLoad(this.gameObject);
         }
 
@@ -106,7 +106,38 @@ namespace UnityToolKit.ConsoleServer
             }
         }
 
+#if CONSOLE_SERVER
+        private void OnGUI()
+        {
+            if (isStarted)
+            {
+                var str = "Console Server ：" + (isRunning ? "Running" : "Stopped");
+                GUI.color = Color.black;
+                GUI.Label(new Rect(4, 4, 220, 30), str);
+                GUI.Label(new Rect(5, 4, 220, 30), str);
+                GUI.Label(new Rect(4, 5, 220, 30), str);
+                GUI.color = Color.white;
+                GUI.Label(new Rect(4, 3, 220, 30), str);
+            }
+
+            if (!isRunning)
+            {
+                StartServer();
+            }
+        }
+#endif
+
         private int mPort = 55055;
+
+        private bool isStarted
+        {
+            get { return listener != null; }
+        }
+
+        private bool isRunning
+        {
+            get { return listener != null && listener.IsListening && mRunningThread != null && mRunningThread.IsAlive; }
+        }
 
         public bool mRegisterLogCallback = false;
 
@@ -141,30 +172,31 @@ namespace UnityToolKit.ConsoleServer
         {
             get
             {
-                string hostName = Dns.GetHostName(); //本机名   
-                //System.Net.IPAddress[] addressList = Dns.GetHostByName(hostName).AddressList;//会警告GetHostByName()已过期，我运行时且只返回了一个IPv4的地址   
-                System.Net.IPAddress[] addressList = Dns.GetHostAddresses(hostName);
-                if (addressList.Length > 0)
+                foreach (NetworkInterface item in NetworkInterface.GetAllNetworkInterfaces())
                 {
-                    for (int i = 0; i < addressList.Length; i++)
+#if UNITY_EDITOR
+                    NetworkInterfaceType _type1 = NetworkInterfaceType.Wireless80211;
+                    NetworkInterfaceType _type2 = NetworkInterfaceType.Ethernet;
+
+                    if ((item.NetworkInterfaceType == _type1 || item.NetworkInterfaceType == _type2) && item.OperationalStatus == OperationalStatus.Up)
+#endif 
                     {
-                        var ip = addressList[i];
-                        if (ip.AddressFamily == AddressFamily.InterNetwork)
+                        foreach (UnicastIPAddressInformation ip in item.GetIPProperties().UnicastAddresses)
                         {
-                            var ipstr = ip.ToString();
-                            if (ipstr.StartsWith("10.") || ipstr.StartsWith("192.") || ipstr.StartsWith("172."))
+                            if (ip.Address.AddressFamily == AddressFamily.InterNetwork)
                             {
-                                return ipstr;
+                                var instr = ip.Address.ToString();
+                                Debug.Log("IP=> " + instr);
+                                if (instr.StartsWith("10.") || instr.StartsWith("192.") || instr.StartsWith("172."))
+                                {
+                                    return instr;
+                                }
                             }
                         }
                     }
+                }
 
-                    return "localhost";
-                }
-                else
-                {
-                    return "localhost";
-                }
+                return "localhost";
             }
         }
 
@@ -172,10 +204,9 @@ namespace UnityToolKit.ConsoleServer
 
         private Thread mRunningThread;
 
-        private static string fileRoot;
+        private static string fileRoot, cacheRoot;
         private static HttpListener listener;
         private static List<RouteAttribute> registeredRoutes;
-        private static Queue<RequestContext> mainRequests = new Queue<RequestContext>();
 
         internal static Dictionary<string, Func<string, string>> customActions =
             new Dictionary<string, Func<string, string>>();
@@ -196,6 +227,7 @@ namespace UnityToolKit.ConsoleServer
             {"html", "text/html"},
             {"ico", "image/x-icon"},
             {"log", "text/html"},
+            {"txt", "text/html"},
         };
 
         private static Dictionary<string, string> internalRes = new Dictionary<string, string>
@@ -302,6 +334,13 @@ namespace UnityToolKit.ConsoleServer
             }
             else
             {
+                var cachePath = path.Replace(fileRoot, cacheRoot);
+                if (File.Exists(cachePath))
+                {
+                    context.Response.WriteFile(cachePath, type, download);
+                    return;
+                }
+
                 var filename = Path.GetFileName(path);
                 if (internalRes.ContainsKey(filename))
                     context.Response.WriteBytes(Convert.FromBase64String(internalRes[filename]));
@@ -315,7 +354,7 @@ namespace UnityToolKit.ConsoleServer
         static void RegisterFileHandlers()
         {
             string pattern = string.Format("({0})", string.Join("|", fileTypes.Select(x => x.Key).ToArray()));
-            RouteAttribute downloadRoute = new RouteAttribute(string.Format(@"^/download/(.*\.{0})$", pattern));
+            RouteAttribute downloadRoute = new RouteAttribute(string.Format(@"^/download/", pattern));
             RouteAttribute fileRoute = new RouteAttribute(string.Format(@"^/(.*\.{0})$", pattern));
 
             bool needs_www = fileRoot.Contains("://");
@@ -335,7 +374,12 @@ namespace UnityToolKit.ConsoleServer
 
         static void FindFileType(RequestContext context, bool download, out string path, out string type)
         {
-            path = Path.Combine(fileRoot, context.match.Groups[1].Value);
+            if (download)
+                path = Path.Combine(fileRoot, context.path.Replace(context.match.ToString(), ""));
+            else
+            {
+                path = Path.Combine(fileRoot, context.match.Groups[1].Value);
+            }
 
             string ext = Path.GetExtension(path).ToLower().TrimStart(new char[] {'.'});
             if (download || !fileTypes.TryGetValue(ext, out type))
@@ -354,6 +398,11 @@ namespace UnityToolKit.ConsoleServer
                 {
                     RouteAttribute route = registeredRoutes[context.currentRoute];
                     Match match = route.m_route.Match(context.path);
+//                    if (route.m_route.ToString() != "^/console/out$")
+//                    {
+//                        Debug.LogError(route.m_route + "  --->  " + context.path + "   " + match.Success);    
+//                    }
+
                     if (!match.Success)
                         continue;
 
@@ -404,32 +453,15 @@ namespace UnityToolKit.ConsoleServer
         {
             while (true)
             {
-                while (mainRequests.Count == 0)
-                {
-                    Thread.Sleep(100);
-                }
-
-                RequestContext context = null;
-                lock (mainRequests)
-                {
-                    context = mainRequests.Dequeue();
-                }
-
-                HandleRequest(context);
-
                 Thread.Sleep(16);
-            }
-        }
+                if (listener == null || !listener.IsListening)
+                {
+                    continue;
+                }
 
-        void ListenerCallback(IAsyncResult result)
-        {
-            RequestContext context = new RequestContext(listener.EndGetContext(result));
-
-            HandleRequest(context);
-
-            if (listener.IsListening)
-            {
-                listener.BeginGetContext(ListenerCallback, null);
+                var context = listener.GetContext();
+                RequestContext rc = new RequestContext(context);
+                HandleRequest(rc);
             }
         }
 
@@ -437,35 +469,33 @@ namespace UnityToolKit.ConsoleServer
         public void StartServer(int port = 55055, bool isRegisterLogCallback = true)
         {
 #if !CONSOLE_SERVER
-                return;
+            return;
 #endif
 
-
-            if (!UnityEngine.Debug.isDebugBuild)
+            if (listener == null)
             {
-                throw new InvalidOperationException("Console Server 只能在Debug Build中使用！");
+                listener = new HttpListener();
             }
 
-            if (listener != null && listener.IsListening && mRunningThread != null && mRunningThread.IsAlive)
+            if (!listener.IsListening)
             {
-                return;
-            }
-            else
-            {
-                if (listener != null)
-                {
-                    Stop();
-                }
+                mPort = port;
+                Debug.Log("Starting Console Server on port : " + mPort);
+                listener.Prefixes.Add("http://*:" + mPort + "/");
+                listener.Start();
             }
 
-            mPort = port;
+            if (mRunningThread == null)
+            {
+                mRunningThread = new Thread(HandleRequests);
+            }
+
+            if (!mRunningThread.IsAlive)
+                mRunningThread.Start();
+
             mRegisterLogCallback = isRegisterLogCallback;
             // Start server
-            Debug.Log("Starting Console Server on port : " + mPort);
-            listener = new HttpListener();
-            listener.Prefixes.Add("http://*:" + mPort + "/");
-            listener.Start();
-            listener.BeginGetContext(ListenerCallback, null);
+
 
             if (mRegisterLogCallback)
             {
@@ -476,14 +506,6 @@ namespace UnityToolKit.ConsoleServer
         Application.RegisterLogCallback(Console.LogCallback);
 #endif
             }
-
-            if (mRunningThread == null)
-            {
-                mRunningThread = new Thread(HandleRequests);
-            }
-
-            if (!mRunningThread.IsAlive)
-                mRunningThread.Start();
         }
 
         public void Stop()
@@ -673,10 +695,10 @@ namespace UnityToolKit.ConsoleServer
     internal class Res
     {
         public static string INDEX_HTML =
-            "PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KICAgIDxsaW5rIHJlbD0ic3R5bGVzaGVldCIgdHlwZT0idGV4dC9jc3MiIGhyZWY9ImNvbnNvbGUuY3NzIj4KICAgIDxsaW5rIHJlbD0ic2hvcnRjdXQgaWNvbiIgaHJlZj0iZmF2aWNvbi5pY28iIHR5cGU9ImltYWdlL3gtaW1hZ2UiPgogICAgPGxpbmsgcmVsPSJpY29uIiBocmVmPSJmYXZpY29uLmljb24iIHR5cGU9ImltYWdlL3gtaW1hZ2UiPgogICAgPHRpdGxlPkNvbnNvbGUgU2VydmVyPC90aXRsZT4KCiAgICA8c2NyaXB0IHNyYz0iaHR0cDovL2FqYXguZ29vZ2xlYXBpcy5jb20vYWpheC9saWJzL2pxdWVyeS8xLjEwLjIvanF1ZXJ5Lm1pbi5qcyI+CiAgICA8L3NjcmlwdD4KCiAgICA8c2NyaXB0PgogICAgICAgIHZhciBjb21tYW5kSW5kZXggPSAtMTsKICAgICAgICB2YXIgaGFzaCA9IG51bGw7CiAgICAgICAgdmFyIGlzVXBkYXRlUGF1c2VkID0gZmFsc2U7CiAgICAgICAgdmFyIF9kYXRhID0gIiI7CgogICAgICAgIGZ1bmN0aW9uIHNjcm9sbEJvdHRvbSgpIHsKICAgICAgICAgICAgJCgnI291dHB1dCcpLnNjcm9sbFRvcCgkKCcjb3V0cHV0JylbMF0uc2Nyb2xsSGVpZ2h0KTsKICAgICAgICB9CgogICAgICAgIGZ1bmN0aW9uIHJ1bkNvbW1hbmQoY29tbWFuZCkgewogICAgICAgICAgICBzY3JvbGxCb3R0b20oKTsKICAgICAgICAgICAgJC5nZXQoImNvbnNvbGUvcnVuP2NvbW1hbmQ9IiArIGVuY29kZVVSSShlbmNvZGVVUklDb21wb25lbnQoY29tbWFuZCkpLCBmdW5jdGlvbiAoZGF0YSwgc3RhdHVzKSB7CiAgICAgICAgICAgICAgICB1cGRhdGVDb25zb2xlKGZ1bmN0aW9uICgpIHsKICAgICAgICAgICAgICAgICAgICB1cGRhdGVDb21tYW5kKGNvbW1hbmRJbmRleCAtIDEpOwogICAgICAgICAgICAgICAgfSk7CiAgICAgICAgICAgIH0pOwogICAgICAgICAgICByZXNldElucHV0KCk7CiAgICAgICAgfQoKICAgICAgICBmdW5jdGlvbiB1cGRhdGVDb25zb2xlKGNhbGxiYWNrKSB7CiAgICAgICAgICAgIGlmIChpc1VwZGF0ZVBhdXNlZCkgcmV0dXJuOwogICAgICAgICAgICAkLmdldCgiY29uc29sZS9vdXQiLCBmdW5jdGlvbiAoZGF0YSwgc3RhdHVzKSB7CiAgICAgICAgICAgICAgICBpZiAoZGF0YSA9PSB1bmRlZmluZWQgfHwgX2RhdGEubGVuZ3RoID09IFN0cmluZyhkYXRhKS5sZW5ndGgpIHsKICAgICAgICAgICAgICAgICAgICByZXR1cm47CiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgX2RhdGEgPSBTdHJpbmcoZGF0YSk7CgogICAgICAgICAgICAgICAgdmFyIGxpbmVzID0gX2RhdGEuc3BsaXQoL1xufFxyL2cpOwogICAgICAgICAgICAgICAgdmFyIGh0bWwgPSAiIjsKICAgICAgICAgICAgICAgIGZvciAodmFyIGkgPSAwOyBpIDwgbGluZXMubGVuZ3RoOyBpKyspIHsKICAgICAgICAgICAgICAgICAgICB2YXIgbGluZSA9IGxpbmVzW2ldOwogICAgICAgICAgICAgICAgICAgIHZhciBpbmRleCA9IGxpbmUuaW5kZXhPZignaHR0cCcpOwogICAgICAgICAgICAgICAgICAgIGlmIChpbmRleCA+PSAwKSB7CiAgICAgICAgICAgICAgICAgICAgICAgIHZhciB1cmwgPSBsaW5lLnN1YnN0cmluZyhpbmRleCk7CiAgICAgICAgICAgICAgICAgICAgICAgIGxpbmUgPSBsaW5lLnN1YnN0cmluZygwLCBpbmRleC0xKSArICc8YSBocmVmPScgKyB1cmwgKyAnPicgKyB1cmwgKyAiPC9hPiI7CiAgICAgICAgICAgICAgICAgICAgICAgIGNvbnNvbGUubG9nKGxpbmUpCiAgICAgICAgICAgICAgICAgICAgfQoKICAgICAgICAgICAgICAgICAgICBodG1sICs9IGxpbmUgKyAnPC9icj4nOwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgaHRtbCArPSAiPGJyPjxicj48YnI+IgogICAgICAgICAgICAgICAgLy8gQ2hlY2sgaWYgd2UgYXJlIHNjcm9sbGVkIHRvIHRoZSBib3R0b20gdG8gZm9yY2Ugc2Nyb2xsaW5nIG9uIHVwZGF0ZQogICAgICAgICAgICAgICAgdmFyIG91dHB1dCA9ICQoJyNvdXRwdXQnKTsKICAgICAgICAgICAgICAgIHNob3VsZFNjcm9sbCA9IE1hdGguYWJzKChvdXRwdXRbMF0uc2Nyb2xsSGVpZ2h0IC0gb3V0cHV0LnNjcm9sbFRvcCgpKSAtIG91dHB1dC5pbm5lckhlaWdodCgpKSA8IDU7CiAgICAgICAgICAgICAgICBvdXRwdXQuaHRtbChodG1sKTsKICAgICAgICAgICAgICAgIC8vY29uc29sZS5sb2coc2hvdWxkU2Nyb2xsICsgIiA6PSAiICsgb3V0cHV0WzBdLnNjcm9sbEhlaWdodCArICIgLSAiICsgb3V0cHV0LnNjcm9sbFRvcCgpICsgIiAoIiArIE1hdGguYWJzKChvdXRwdXRbMF0uc2Nyb2xsSGVpZ2h0IC0gb3V0cHV0LnNjcm9sbFRvcCgpKSAtIG91dHB1dC5pbm5lckhlaWdodCgpKSArICIpID09ICIgKyBvdXRwdXQuaW5uZXJIZWlnaHQoKSk7CiAgICAgICAgICAgICAgICAvL2NvbnNvbGUubG9nKFN0cmluZyhkYXRhKSk7CiAgICAgICAgICAgICAgICBpZiAoY2FsbGJhY2spIGNhbGxiYWNrKCk7CiAgICAgICAgICAgICAgICBpZiAoc2hvdWxkU2Nyb2xsKSBzY3JvbGxCb3R0b20oKTsKICAgICAgICAgICAgfSk7CiAgICAgICAgfQoKICAgICAgICBmdW5jdGlvbiByZXNldElucHV0KCkgewogICAgICAgICAgICBjb21tYW5kSW5kZXggPSAtMTsKICAgICAgICAgICAgJCgiI2lucHV0IikudmFsKCIiKTsKICAgICAgICB9CgogICAgICAgIGZ1bmN0aW9uIHByZXZpb3VzQ29tbWFuZCgpIHsKICAgICAgICAgICAgdXBkYXRlQ29tbWFuZChjb21tYW5kSW5kZXggKyAxKTsKICAgICAgICB9CgogICAgICAgIGZ1bmN0aW9uIG5leHRDb21tYW5kKCkgewogICAgICAgICAgICB1cGRhdGVDb21tYW5kKGNvbW1hbmRJbmRleCAtIDEpOwogICAgICAgIH0KCiAgICAgICAgZnVuY3Rpb24gdXBkYXRlQ29tbWFuZChpbmRleCkgewogICAgICAgICAgICAvLyBDaGVjayBpZiB3ZSBhcmUgYXQgdGhlIGRlZnVhbHQgaW5kZXggYW5kIGNsZWFyIHRoZSBpbnB1dAogICAgICAgICAgICBpZiAoaW5kZXggPCAwKSB7CiAgICAgICAgICAgICAgICByZXNldElucHV0KCk7CiAgICAgICAgICAgICAgICByZXR1cm47CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgICQuZ2V0KCJjb25zb2xlL2NvbW1hbmRIaXN0b3J5P2luZGV4PSIgKyBpbmRleCwgZnVuY3Rpb24gKGRhdGEsIHN0YXR1cykgewogICAgICAgICAgICAgICAgaWYgKGRhdGEpIHsKICAgICAgICAgICAgICAgICAgICBjb21tYW5kSW5kZXggPSBpbmRleDsKICAgICAgICAgICAgICAgICAgICAkKCIjaW5wdXQiKS52YWwoU3RyaW5nKGRhdGEpKTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgfSk7CiAgICAgICAgfQoKICAgICAgICBmdW5jdGlvbiBjb21wbGV0ZShjb21tYW5kKSB7CiAgICAgICAgICAgICQuZ2V0KCJjb25zb2xlL2NvbXBsZXRlP2NvbW1hbmQ9IiArIGNvbW1hbmQsIGZ1bmN0aW9uIChkYXRhLCBzdGF0dXMpIHsKICAgICAgICAgICAgICAgIGlmIChkYXRhKSB7CiAgICAgICAgICAgICAgICAgICAgJCgiI2lucHV0IikudmFsKFN0cmluZyhkYXRhKSk7CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0pOwogICAgICAgIH0KCiAgICAgICAgLy8gUG9sbCB0byB1cGRhdGUgdGhlIGNvbnNvbGUgb3V0cHV0CiAgICAgICAgd2luZG93LnNldEludGVydmFsKGZ1bmN0aW9uICgpIHsKICAgICAgICAgICAgdXBkYXRlQ29uc29sZShudWxsKQogICAgICAgIH0sIDUwMCk7CiAgICA8L3NjcmlwdD4KPC9oZWFkPgoKPGJvZHkgY2xhc3M9ImNvbnNvbGUiPgo8YnV0dG9uIGlkPSJwYXVzZVVwZGF0ZXMiPlBhdXNlIFVwZGF0ZXM8L2J1dHRvbj4KPGRpdiBpZD0ib3V0cHV0IiBjbGFzcz0iY29uc29sZSI+PC9kaXY+Cjx0ZXh0YXJlYSBpZD0iaW5wdXQiIGNsYXNzPSJjb25zb2xlIiBhdXRvZm9jdXMgcm93cz0iMSI+PC90ZXh0YXJlYT4KCjxzY3JpcHQ+CiAgICAvLyBzZXR1cCBvdXIgcGF1c2UgdXBkYXRlcyBidXR0b24KICAgICQoIiNwYXVzZVVwZGF0ZXMiKS5jbGljayhmdW5jdGlvbiAoKSB7CiAgICAgICAgLy9jb25zb2xlLmxvZygicGF1c2UgdXBkYXRlcyAiICsgaXNVcGRhdGVQYXVzZWQpOwogICAgICAgIGlzVXBkYXRlUGF1c2VkID0gIWlzVXBkYXRlUGF1c2VkOwogICAgICAgICQoIiNwYXVzZVVwZGF0ZXMiKS5odG1sKGlzVXBkYXRlUGF1c2VkID8gIlJlc3VtZSBVcGRhdGVzIiA6ICJQYXVzZSBVcGRhdGVzIik7CiAgICB9KTsKCiAgICAkKCIjaW5wdXQiKS5rZXlkb3duKGZ1bmN0aW9uIChlKSB7CiAgICAgICAgaWYgKGUua2V5Q29kZSA9PSAxMykgeyAvLyBFbnRlcgogICAgICAgICAgICAvLyB3ZSBkb24ndCB3YW50IGEgbGluZSBicmVhayBpbiB0aGUgY29uc29sZQogICAgICAgICAgICBlLnByZXZlbnREZWZhdWx0KCk7CiAgICAgICAgICAgIHJ1bkNvbW1hbmQoJCgiI2lucHV0IikudmFsKCkpOwogICAgICAgIH0gZWxzZSBpZiAoZS5rZXlDb2RlID09IDM4KSB7IC8vIFVwCiAgICAgICAgICAgIHByZXZpb3VzQ29tbWFuZCgpOwogICAgICAgIH0gZWxzZSBpZiAoZS5rZXlDb2RlID09IDQwKSB7IC8vIERvd24KICAgICAgICAgICAgbmV4dENvbW1hbmQoKTsKICAgICAgICB9IGVsc2UgaWYgKGUua2V5Q29kZSA9PSAyNykgeyAvLyBFc2NhcGUKICAgICAgICAgICAgcmVzZXRJbnB1dCgpOwogICAgICAgIH0gZWxzZSBpZiAoZS5rZXlDb2RlID09IDkpIHsgLy8gVGFiCiAgICAgICAgICAgIGUucHJldmVudERlZmF1bHQoKTsKICAgICAgICAgICAgY29tcGxldGUoJCgiI2lucHV0IikudmFsKCkpOwogICAgICAgIH0KICAgIH0pOwo8L3NjcmlwdD4KPC9ib2R5PgoKPC9odG1sPg==";
+            "PCFET0NUWVBFIGh0bWw+CjxodG1sPgo8aGVhZD4KICAgIDxsaW5rIHJlbD0ic3R5bGVzaGVldCIgdHlwZT0idGV4dC9jc3MiIGhyZWY9ImNvbnNvbGUuY3NzIj4KICAgIDxsaW5rIHJlbD0ic2hvcnRjdXQgaWNvbiIgaHJlZj0iZmF2aWNvbi5pY28iIHR5cGU9ImltYWdlL3gtaW1hZ2UiPgogICAgPGxpbmsgcmVsPSJpY29uIiBocmVmPSJmYXZpY29uLmljb24iIHR5cGU9ImltYWdlL3gtaW1hZ2UiPgogICAgPHRpdGxlPkNvbnNvbGUgU2VydmVyPC90aXRsZT4KCiAgICA8c2NyaXB0IHNyYz0iaHR0cDovL2FqYXguZ29vZ2xlYXBpcy5jb20vYWpheC9saWJzL2pxdWVyeS8xLjEwLjIvanF1ZXJ5Lm1pbi5qcyI+CiAgICA8L3NjcmlwdD4KCiAgICA8c2NyaXB0PgogICAgICAgIHZhciBjb21tYW5kSW5kZXggPSAtMTsKICAgICAgICB2YXIgaGFzaCA9IG51bGw7CiAgICAgICAgdmFyIGlzVXBkYXRlUGF1c2VkID0gZmFsc2U7CiAgICAgICAgdmFyIF9kYXRhID0gIiI7CgogICAgICAgIGZ1bmN0aW9uIHNjcm9sbEJvdHRvbSgpIHsKICAgICAgICAgICAgJCgnI291dHB1dCcpLnNjcm9sbFRvcCgkKCcjb3V0cHV0JylbMF0uc2Nyb2xsSGVpZ2h0KTsKICAgICAgICB9CgogICAgICAgIGZ1bmN0aW9uIHJ1bkNvbW1hbmQoY29tbWFuZCkgewogICAgICAgICAgICBzY3JvbGxCb3R0b20oKTsKICAgICAgICAgICAgJC5nZXQoImNvbnNvbGUvcnVuP2NvbW1hbmQ9IiArIGVuY29kZVVSSShlbmNvZGVVUklDb21wb25lbnQoY29tbWFuZCkpLCBmdW5jdGlvbiAoZGF0YSwgc3RhdHVzKSB7CiAgICAgICAgICAgICAgICB1cGRhdGVDb25zb2xlKGZ1bmN0aW9uICgpIHsKICAgICAgICAgICAgICAgICAgICB1cGRhdGVDb21tYW5kKGNvbW1hbmRJbmRleCAtIDEpOwogICAgICAgICAgICAgICAgfSk7CiAgICAgICAgICAgIH0pOwogICAgICAgICAgICByZXNldElucHV0KCk7CiAgICAgICAgfQoKICAgICAgICBmdW5jdGlvbiB1cGRhdGVDb25zb2xlKGNhbGxiYWNrKSB7CiAgICAgICAgICAgIGlmIChpc1VwZGF0ZVBhdXNlZCkgcmV0dXJuOwogICAgICAgICAgICAkLmdldCgiY29uc29sZS9vdXQiLCBmdW5jdGlvbiAoZGF0YSwgc3RhdHVzKSB7CiAgICAgICAgICAgICAgICBpZiAoZGF0YSA9PSB1bmRlZmluZWQgfHwgX2RhdGEubGVuZ3RoID09IFN0cmluZyhkYXRhKS5sZW5ndGgpIHsKICAgICAgICAgICAgICAgICAgICByZXR1cm47CiAgICAgICAgICAgICAgICB9CgogICAgICAgICAgICAgICAgX2RhdGEgPSBTdHJpbmcoZGF0YSk7CgogICAgICAgICAgICAgICAgbGV0IGxpbmVzID0gX2RhdGEuc3BsaXQoL1xufFxyL2cpOwogICAgICAgICAgICAgICAgbGV0IGh0bWwgPSAiIjsKICAgICAgICAgICAgICAgIGZvciAobGV0IGkgPSAwOyBpIDwgbGluZXMubGVuZ3RoOyBpKyspIHsKICAgICAgICAgICAgICAgICAgICBsZXQgbGluZSA9IGxpbmVzW2ldOwogICAgICAgICAgICAgICAgICAgIGxldCBpbmRleCA9IGxpbmUuaW5kZXhPZignaHR0cCcpOwogICAgICAgICAgICAgICAgICAgIGlmIChpbmRleCA+PSAwKSB7CiAgICAgICAgICAgICAgICAgICAgICAgIGxldCB1cmwgPSBsaW5lLnN1YnN0cmluZyhpbmRleCkudHJpbSgpOwogICAgICAgICAgICAgICAgICAgICAgICBjb25zb2xlLmxvZyhsaW5lKQogICAgICAgICAgICAgICAgICAgICAgICBjb25zb2xlLmxvZyhsaW5lLnN1YnN0cmluZygwLCBpbmRleCAtIDEpKQogICAgICAgICAgICAgICAgICAgICAgICBsaW5lID0gbGluZS5zdWJzdHJpbmcoMCwgaW5kZXgpICsgJzxhIGhyZWY9IicgKyB1cmwgKyAnIj4nICsgdXJsICsgIjwvYT4iOwogICAgICAgICAgICAgICAgICAgICAgICBjb25zb2xlLmxvZyhsaW5lKQogICAgICAgICAgICAgICAgICAgIH1lbHNlewogICAgICAgICAgICAgICAgICAgICAgICBpbmRleCA9IGxpbmUuaW5kZXhPZignOi8nKTsKICAgICAgICAgICAgICAgICAgICAgICAgaWYgKGluZGV4ID49IDApIHsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGxldCB1cmwgPSBsaW5lLnN1YnN0cmluZyhpbmRleCAtIDEpLnRyaW0oKTsKICAgICAgICAgICAgICAgICAgICAgICAgICAgIGxpbmUgPSBsaW5lLnN1YnN0cmluZygwLCBpbmRleCAtIDEpICsgJzxhIGhyZWY9ZmlsZTovLy8nICsgdXJsICsgJz4nICsgdXJsICsgIjwvYT4iOwogICAgICAgICAgICAgICAgICAgICAgICAgICAgY29uc29sZS5sb2cobGluZSkKICAgICAgICAgICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgICAgIH0KCgoKICAgICAgICAgICAgICAgICAgICBodG1sICs9IGxpbmUgKyAnPC9icj4nOwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICAgICAgaHRtbCArPSAiPGJyPjxicj48YnI+IgogICAgICAgICAgICAgICAgLy8gQ2hlY2sgaWYgd2UgYXJlIHNjcm9sbGVkIHRvIHRoZSBib3R0b20gdG8gZm9yY2Ugc2Nyb2xsaW5nIG9uIHVwZGF0ZQogICAgICAgICAgICAgICAgbGV0IG91dHB1dCA9ICQoJyNvdXRwdXQnKTsKICAgICAgICAgICAgICAgIGxldCBzaG91bGRTY3JvbGwgPSBNYXRoLmFicygob3V0cHV0WzBdLnNjcm9sbEhlaWdodCAtIG91dHB1dC5zY3JvbGxUb3AoKSkgLSBvdXRwdXQuaW5uZXJIZWlnaHQoKSkgPCA1OwogICAgICAgICAgICAgICAgb3V0cHV0Lmh0bWwoaHRtbCk7CiAgICAgICAgICAgICAgICAvL2NvbnNvbGUubG9nKHNob3VsZFNjcm9sbCArICIgOj0gIiArIG91dHB1dFswXS5zY3JvbGxIZWlnaHQgKyAiIC0gIiArIG91dHB1dC5zY3JvbGxUb3AoKSArICIgKCIgKyBNYXRoLmFicygob3V0cHV0WzBdLnNjcm9sbEhlaWdodCAtIG91dHB1dC5zY3JvbGxUb3AoKSkgLSBvdXRwdXQuaW5uZXJIZWlnaHQoKSkgKyAiKSA9PSAiICsgb3V0cHV0LmlubmVySGVpZ2h0KCkpOwogICAgICAgICAgICAgICAgLy9jb25zb2xlLmxvZyhTdHJpbmcoZGF0YSkpOwogICAgICAgICAgICAgICAgaWYgKGNhbGxiYWNrKSBjYWxsYmFjaygpOwogICAgICAgICAgICAgICAgaWYgKHNob3VsZFNjcm9sbCkgc2Nyb2xsQm90dG9tKCk7CiAgICAgICAgICAgIH0pOwogICAgICAgIH0KCiAgICAgICAgZnVuY3Rpb24gcmVzZXRJbnB1dCgpIHsKICAgICAgICAgICAgY29tbWFuZEluZGV4ID0gLTE7CiAgICAgICAgICAgICQoIiNpbnB1dCIpLnZhbCgiIik7CiAgICAgICAgfQoKICAgICAgICBmdW5jdGlvbiBwcmV2aW91c0NvbW1hbmQoKSB7CiAgICAgICAgICAgIHVwZGF0ZUNvbW1hbmQoY29tbWFuZEluZGV4ICsgMSk7CiAgICAgICAgfQoKICAgICAgICBmdW5jdGlvbiBuZXh0Q29tbWFuZCgpIHsKICAgICAgICAgICAgdXBkYXRlQ29tbWFuZChjb21tYW5kSW5kZXggLSAxKTsKICAgICAgICB9CgogICAgICAgIGZ1bmN0aW9uIHVwZGF0ZUNvbW1hbmQoaW5kZXgpIHsKICAgICAgICAgICAgLy8gQ2hlY2sgaWYgd2UgYXJlIGF0IHRoZSBkZWZ1YWx0IGluZGV4IGFuZCBjbGVhciB0aGUgaW5wdXQKICAgICAgICAgICAgaWYgKGluZGV4IDwgMCkgewogICAgICAgICAgICAgICAgcmVzZXRJbnB1dCgpOwogICAgICAgICAgICAgICAgcmV0dXJuOwogICAgICAgICAgICB9CgogICAgICAgICAgICAkLmdldCgiY29uc29sZS9jb21tYW5kSGlzdG9yeT9pbmRleD0iICsgaW5kZXgsIGZ1bmN0aW9uIChkYXRhLCBzdGF0dXMpIHsKICAgICAgICAgICAgICAgIGlmIChkYXRhKSB7CiAgICAgICAgICAgICAgICAgICAgY29tbWFuZEluZGV4ID0gaW5kZXg7CiAgICAgICAgICAgICAgICAgICAgJCgiI2lucHV0IikudmFsKFN0cmluZyhkYXRhKSk7CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgIH0pOwogICAgICAgIH0KCiAgICAgICAgZnVuY3Rpb24gY29tcGxldGUoY29tbWFuZCkgewogICAgICAgICAgICAkLmdldCgiY29uc29sZS9jb21wbGV0ZT9jb21tYW5kPSIgKyBjb21tYW5kLCBmdW5jdGlvbiAoZGF0YSwgc3RhdHVzKSB7CiAgICAgICAgICAgICAgICBpZiAoZGF0YSkgewogICAgICAgICAgICAgICAgICAgICQoIiNpbnB1dCIpLnZhbChTdHJpbmcoZGF0YSkpOwogICAgICAgICAgICAgICAgfQogICAgICAgICAgICB9KTsKICAgICAgICB9CgogICAgICAgIC8vIFBvbGwgdG8gdXBkYXRlIHRoZSBjb25zb2xlIG91dHB1dAogICAgICAgIHdpbmRvdy5zZXRJbnRlcnZhbChmdW5jdGlvbiAoKSB7CiAgICAgICAgICAgIHVwZGF0ZUNvbnNvbGUobnVsbCkKICAgICAgICB9LCA1MDApOwogICAgPC9zY3JpcHQ+CjwvaGVhZD4KCjxib2R5IGNsYXNzPSJjb25zb2xlIj4KPGJ1dHRvbiBpZD0icGF1c2VVcGRhdGVzIj5QYXVzZSBVcGRhdGVzPC9idXR0b24+CjxkaXYgaWQ9Im91dHB1dCIgY2xhc3M9ImNvbnNvbGUiPjwvZGl2Pgo8dGV4dGFyZWEgaWQ9ImlucHV0IiBjbGFzcz0iY29uc29sZSIgYXV0b2ZvY3VzIHJvd3M9IjEiPjwvdGV4dGFyZWE+Cgo8c2NyaXB0PgogICAgLy8gc2V0dXAgb3VyIHBhdXNlIHVwZGF0ZXMgYnV0dG9uCiAgICAkKCIjcGF1c2VVcGRhdGVzIikuY2xpY2soZnVuY3Rpb24gKCkgewogICAgICAgIC8vY29uc29sZS5sb2coInBhdXNlIHVwZGF0ZXMgIiArIGlzVXBkYXRlUGF1c2VkKTsKICAgICAgICBpc1VwZGF0ZVBhdXNlZCA9ICFpc1VwZGF0ZVBhdXNlZDsKICAgICAgICAkKCIjcGF1c2VVcGRhdGVzIikuaHRtbChpc1VwZGF0ZVBhdXNlZCA/ICJSZXN1bWUgVXBkYXRlcyIgOiAiUGF1c2UgVXBkYXRlcyIpOwogICAgfSk7CgogICAgJCgiI2lucHV0Iikua2V5ZG93bihmdW5jdGlvbiAoZSkgewogICAgICAgIGlmIChlLmtleUNvZGUgPT0gMTMpIHsgLy8gRW50ZXIKICAgICAgICAgICAgLy8gd2UgZG9uJ3Qgd2FudCBhIGxpbmUgYnJlYWsgaW4gdGhlIGNvbnNvbGUKICAgICAgICAgICAgZS5wcmV2ZW50RGVmYXVsdCgpOwogICAgICAgICAgICBydW5Db21tYW5kKCQoIiNpbnB1dCIpLnZhbCgpKTsKICAgICAgICB9IGVsc2UgaWYgKGUua2V5Q29kZSA9PSAzOCkgeyAvLyBVcAogICAgICAgICAgICBwcmV2aW91c0NvbW1hbmQoKTsKICAgICAgICB9IGVsc2UgaWYgKGUua2V5Q29kZSA9PSA0MCkgeyAvLyBEb3duCiAgICAgICAgICAgIG5leHRDb21tYW5kKCk7CiAgICAgICAgfSBlbHNlIGlmIChlLmtleUNvZGUgPT0gMjcpIHsgLy8gRXNjYXBlCiAgICAgICAgICAgIHJlc2V0SW5wdXQoKTsKICAgICAgICB9IGVsc2UgaWYgKGUua2V5Q29kZSA9PSA5KSB7IC8vIFRhYgogICAgICAgICAgICBlLnByZXZlbnREZWZhdWx0KCk7CiAgICAgICAgICAgIGNvbXBsZXRlKCQoIiNpbnB1dCIpLnZhbCgpKTsKICAgICAgICB9CiAgICB9KTsKPC9zY3JpcHQ+CjwvYm9keT4KCjwvaHRtbD4=";
 
         public static string INDEX_CSS =
-            "aHRtbCwgYm9keSB7CiAgICBoZWlnaHQ6MTAwJTsKfQoKdGV4dGFyZWEgewogICAgcmVzaXplOm5vbmU7Cn0KCmJvZHkuY29uc29sZSB7CiAgICBiYWNrZ3JvdW5kLWNvbG9yOmJsYWNrOwp9CgpkaXYuY29uc29sZSB7CiAgICBoZWlnaHQ6OTglOwogICAgd2lkdGg6MTAwJTsKICAgIGJhY2tncm91bmQtY29sb3I6YmxhY2s7CiAgICBjb2xvcjojRjBGMEYwOwogICAgZm9udC1zaXplOjE0cHg7CiAgICBmb250LWZhbWlseTptb25vc3BhY2U7CiAgICBvdmVyZmxvdy15OmF1dG87CiAgICBvdmVyZmxvdy14OmF1dG87CiAgICB3aGl0ZS1zcGFjZTpub3JtYWw7CiAgICB3b3JkLXdyYXA6YnJlYWstd29yZDsKfQoKdGV4dGFyZWEuY29uc29sZSB7CiAgICB3aWR0aDoxMDAlOwogICAgYmFja2dyb3VuZC1jb2xvcjpibGFjazsKICAgIGNvbG9yOiNGMEYwRjA7CiAgICBmb250LXNpemU6MTRweDsKICAgIGZvbnQtZmFtaWx5Om1vbm9zcGFjZTsKICAgIHBvc2l0aW9uOmZpeGVkOwogICAgYm90dG9tOiAzcHg7CiAgICBkaXNwbGF5OiBibG9jazsKfQoKc3Bhbi5XYXJuaW5nIHsKICAgIGNvbG9yOiNmNGU1NDI7Cn0KCnNwYW4uQXNzZXJ0IHsKICAgIGNvbG9yOiNmNGU1NDI7Cn0KCnNwYW4uRXJyb3IgewogICAgY29sb3I6I2ZmMDAwMDsKfQoKc3Bhbi5FeGNlcHRpb24gewogICAgY29sb3I6I2ZmMDAwMDsKfQoKc3Bhbi5IZWxwIHsKICAgIGNvbG9yOiMxNmYzZmY7Cn0KCmJ1dHRvbiNwYXVzZVVwZGF0ZXMgewogICAgd2lkdGg6MTUwcHg7CiAgICBoZWlnaHQ6NDBweDsKICAgIHBvc2l0aW9uOmZpeGVkOwogICAgZmxvYXQ6cmlnaHQ7CiAgICBtYXJnaW4tcmlnaHQ6NTBweDsKICAgIG1hcmdpbi10b3A6MTBweDsKICAgIHJpZ2h0OjBweDsKICAgIG9wYWNpdHk6LjU7Cn0=";
+            "aHRtbCwgYm9keSB7CiAgICBoZWlnaHQ6MTAwJTsKfQoKdGV4dGFyZWEgewogICAgcmVzaXplOm5vbmU7Cn0KCmJvZHkuY29uc29sZSB7CiAgICBiYWNrZ3JvdW5kLWNvbG9yOmJsYWNrOwp9CgpkaXYuY29uc29sZSB7CiAgICBoZWlnaHQ6OTglOwogICAgd2lkdGg6MTAwJTsKICAgIGJhY2tncm91bmQtY29sb3I6YmxhY2s7CiAgICBjb2xvcjojRjBGMEYwOwogICAgZm9udC1zaXplOjE0cHg7CiAgICBmb250LWZhbWlseTptb25vc3BhY2U7CiAgICBvdmVyZmxvdy15OmF1dG87CiAgICBvdmVyZmxvdy14OmF1dG87CiAgICB3aGl0ZS1zcGFjZTpub3JtYWw7CiAgICB3b3JkLXdyYXA6YnJlYWstd29yZDsKfQoKdGV4dGFyZWEuY29uc29sZSB7CiAgICB3aWR0aDoxMDAlOwogICAgYmFja2dyb3VuZC1jb2xvcjpibGFjazsKICAgIGNvbG9yOiNGMEYwRjA7CiAgICBmb250LXNpemU6MTRweDsKICAgIGZvbnQtZmFtaWx5Om1vbm9zcGFjZTsKICAgIHBvc2l0aW9uOmZpeGVkOwogICAgYm90dG9tOiAzcHg7CiAgICBkaXNwbGF5OiBibG9jazsKfQoKYSB7CiAgICBjb2xvcjojZjRlNTQyOwp9CmE6aG92ZXJ7CiAgICBjb2xvcjojZjVlNjQzOwp9CgpzcGFuLldhcm5pbmcgewogICAgY29sb3I6I2Y0ZTU0MjsKfQoKc3Bhbi5Bc3NlcnQgewogICAgY29sb3I6I2Y0ZTU0MjsKfQoKc3Bhbi5FcnJvciB7CiAgICBjb2xvcjogI2ZmMDA1MjsKfQoKc3Bhbi5FeGNlcHRpb24gewogICAgY29sb3I6I2ZmMDAwMDsKfQoKc3Bhbi5IZWxwIHsKICAgIGNvbG9yOiAjMDlmZmE2Owp9CgpidXR0b24jcGF1c2VVcGRhdGVzIHsKICAgIHdpZHRoOjE1MHB4OwogICAgaGVpZ2h0OjQwcHg7CiAgICBwb3NpdGlvbjpmaXhlZDsKICAgIGZsb2F0OnJpZ2h0OwogICAgbWFyZ2luLXJpZ2h0OjUwcHg7CiAgICBtYXJnaW4tdG9wOjEwcHg7CiAgICByaWdodDowcHg7CiAgICBvcGFjaXR5Oi41Owp9";
 
         public static string INDEX_ICO =
             "iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAABuklEQVQ4jaWTPUhbURiGn5t7vJJrUFuTXNKIVgsVQyQoikjF0g5VQToKQkXcXLq4CRUHwa1bJzsUCi3+tIsOoohCB8GCSBVCoZXrX9WkNUbIj5GbpINybUgTUvrBWc4573Pe7+U70lZzXRpAODUkWVBIpZMGRjAAgAWgvPspslUtSKx6faj1Xip6nwEghFMj7t8msacXBDBcboqcGjH/NsKpISRZkKi9z2XZrYIANk8DhEOU+Jo4X1lCAIS2Nokf/aB58i3HC/M4Hjzk68sJLo6PsgDFdgdl6k27GakFlheJ7elIHY/QHj+h3NdonkW+f2Nn8hXG6S/CKxsUudzAdYgmzWajqm8A/c1rSj1eXF095rrd0vrXljIcnG18Jrqrc2/oOUgS+7PvUSursLe158wkw0H4yyZ3+wext7VzMPMO//gohx+nc4qzAAAWRUGS5byinC38WZ4X49QNjyDU/AOWe3ZTKUinMKIRjGiEi8DJvwH8E2MEV5fzvg4g0kkDi1Jsbhx8mOLnp1Wi+k5eoUVRSMZjCCMYwNHZc+X6MkFofc28ZL3jzhIqFQ5EdQ1WTwPhhTmk//3OvwGiHYnCU40aDAAAAABJRU5ErkJggg==";
@@ -723,6 +745,7 @@ end
     {
         internal static int CurrentState;
 
+        internal const int STATE_TAIL = 2;
         internal const int STATE_LUA = 1;
         internal const int STATE_NONE = 0;
 
@@ -740,6 +763,7 @@ end
         private List<string> m_output;
         private List<string> m_unitylog;
         private List<string> m_unityloge;
+        private List<string> m_unityloga;
         private List<string> m_unitylogw;
         private List<string> m_history;
 
@@ -794,8 +818,26 @@ end
             }
         }
 
+        private static string _logAllFilePath;
+
+        private static string LogAllFilePath
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_logAllFilePath))
+                {
+                    _logAllFilePath = Path.Combine(Application.persistentDataPath,
+                        "Unity_" + DateString + "_all" + ".log");
+                }
+
+                return _logAllFilePath;
+            }
+        }
+
         private static string _logWarningFilePath;
+        private const string EXCEPTION_KEY = "exception";
         public static string LUA_FILTER_KEY;
+        
 
         private static string LogWarningFilePath
         {
@@ -818,6 +860,7 @@ end
             m_history = new List<string>();
             m_unitylog = new List<string>();
             m_unityloge = new List<string>();
+            m_unityloga = new List<string>();
             m_unitylogw = new List<string>();
 
             RegisterAttributes();
@@ -848,6 +891,10 @@ end
         [Command("clear", "clears console output", false)]
         public static void Clear()
         {
+            Instance.m_unityloga.Clear();
+            Instance.m_unityloge.Clear();
+            Instance.m_unitylogw.Clear();
+            Instance.m_unitylog.Clear();
             Instance.m_output.Clear();
         }
 
@@ -902,10 +949,11 @@ end
                 help += string.Format("\n{0} : {1}", cmd.m_command, cmd.m_help);
             }
 
-            Log("<span class='Help'>" + help + "</span>");
+            Log("<span class='Help'>" + help + "\n More details refer to  </span>" +
+                "https://www.suntabu.com/post/unity-console-server/");
         }
 
-        [Command("log", "print unity log with line n", false)]
+        [Command("log", "print unity log with line n, with '-f' to enter log auto-print mode", false)]
         public static void Log(params string[] args)
         {
             if (args.Length <= 0)
@@ -918,6 +966,16 @@ end
             if (int.TryParse(args[0], out count))
             {
                 LogCommand(LogType.Log, count);
+            }
+            else if (args[0].Trim() == "-f")
+            {
+                CurrentState = STATE_TAIL;
+                Log(">>>>>>> LOG <<<<<<<");
+            }
+            else if (args[0].Trim() == "exit")
+            {
+                CurrentState = STATE_NONE;
+                Log(">>>>>>> LOG EXIT <<<<<<<");
             }
             else
             {
@@ -962,6 +1020,26 @@ end
             else
             {
                 LogCommand(LogType.Warning);
+            }
+        }
+
+        [Command("loga", "print unity all log with line n", false)]
+        public static void LogA(params string[] args)
+        {
+            if (args.Length <= 0)
+            {
+                LogAll();
+                return;
+            }
+
+            int count = 0;
+            if (int.TryParse(args[0], out count))
+            {
+                LogAll(count);
+            }
+            else
+            {
+                LogAll();
             }
         }
 
@@ -1013,6 +1091,13 @@ end
             PrintDirectoryFiles(Application.streamingAssetsPath, args);
         }
 
+        [Command("tdirs",
+            "print all files in temporary assets directory, parameters could be ignored folders, split with space")]
+        public static void TempDirectory(string[] args)
+        {
+            PrintDirectoryFiles(Application.temporaryCachePath, args);
+        }
+
         static void PrintDirectoryFiles(string dirRoot, params string[] args)
         {
             var files = Directory.GetFiles(dirRoot, "*", SearchOption.AllDirectories);
@@ -1036,7 +1121,11 @@ end
                     }
 
                     if (isLog)
-                        Log("-> " + file);
+                    {
+                        var fileInfo = new FileInfo(file);
+                        var log = (fileInfo.Length / 1024f).ToString("F2").PadLeft(10, '-') + "KB - " + file;
+                        Log(log);
+                    }
                 }
             }
         }
@@ -1046,6 +1135,30 @@ end
         public static void PersistentDirectory(string[] args)
         {
             PrintDirectoryFiles(Application.persistentDataPath, args);
+        }
+
+        [Command("gettfile", "get file from temporary directory")]
+        public static void GetFileFromTemporary(string[] args)
+        {
+            if (args.Length <= 0)
+            {
+                Log("A file path should be given!");
+                return;
+            }
+
+            var myFile = args[0];
+            var files = Directory.GetFiles(Application.temporaryCachePath, "*", SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                if (file.ToLower().Contains(myFile.ToLower()))
+                {
+                    var filename = file.Substring(Application.temporaryCachePath.Length + 1).Replace('\\', '/');
+                    Log(string.Format("-> http://{0}:{1}/download/{2}", ConsoleServer.Instance.IP,
+                        ConsoleServer.Instance.Port,
+                        filename));
+                    break;
+                }
+            }
         }
 
         [Command("getpfile", "get file from persistent directory")]
@@ -1122,14 +1235,19 @@ end
         /* Logs string to output */
         public static void Log(string str)
         {
-            Instance.m_output.Add(str);
+            Instance.m_output.Add(string.Format("{0} : {1}", DateTime.Now.ToString(), str));
             if (Instance.m_output.Count > MAX_LINES)
                 Instance.m_output.RemoveAt(0);
         }
 
         private static void LogToFile(string log, LogType type)
         {
-            var newLog = string.Format("{0} : {1}", DateTime.Now.ToString(), log);
+            var newLog = string.Format("\n{0} : {1}\n", DateTime.Now.ToString(), log);
+
+            Instance.m_unityloga.Add(newLog);
+            if (Instance.m_unityloga.Count > MAX_LINES)
+                Instance.m_unityloga.RemoveAt(0);
+            File.AppendAllText(LogAllFilePath, newLog, Encoding.UTF8);
 
             switch (type)
             {
@@ -1153,6 +1271,21 @@ end
                         Instance.m_unityloge.RemoveAt(0);
                     File.AppendAllText(LogErrorFilePath, newLog, Encoding.UTF8);
                     break;
+            }
+        }
+
+        public static void LogAll(int count = 20)
+        {
+            int printCount = count;
+            if (count > MAX_LINES)
+            {
+                Log(string.Format("Only support {0} lines log, wanna more please download log", MAX_LINES));
+            }
+
+            printCount = Mathf.Min(MAX_LINES, Instance.m_unityloga.Count);
+            for (int i = 0; i < printCount; i++)
+            {
+                Log(Instance.m_unityloga[i]);
             }
         }
 
@@ -1208,20 +1341,23 @@ end
                 Log("No stacktrace string found");
             }
 
+            var formatStr = "<span class='" + type + "'>" + logString + "\n" + stackTrace + "</span>";
+
             if (type != LogType.Log)
             {
-                Console.LogToFile("<span class='" + type + "'>" + logString + "\n" + stackTrace + "</span>", type);
+                Console.LogToFile(formatStr, type);
             }
             else
             {
                 Console.LogToFile(logString, type);
             }
 
-
+            var content = (logString + stackTrace).ToLower();
             //TODO: add lua execute result logs to show on real time.
-            if (!string.IsNullOrEmpty(LUA_FILTER_KEY) && stackTrace.ToLower().Contains(LUA_FILTER_KEY))
+            if ((!string.IsNullOrEmpty(LUA_FILTER_KEY) && content.Contains(LUA_FILTER_KEY)) ||
+                CurrentState == STATE_TAIL || content.Contains(EXCEPTION_KEY))
             {
-                Log(logString);
+                Log(formatStr);
             }
         }
 
@@ -1592,6 +1728,10 @@ end
             if (Console.CurrentState == Console.STATE_LUA)
             {
                 _run(new string[] {"lua", commandStr.Replace("lua ", "")}, 0);
+            }
+            else if (Console.CurrentState == Console.STATE_TAIL)
+            {
+                _run(new string[] {"log", commandStr.Replace("log ", "")}, 0);
             }
             else
             {
