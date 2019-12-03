@@ -178,8 +178,9 @@ namespace UnityToolKit.ConsoleServer
                     NetworkInterfaceType _type1 = NetworkInterfaceType.Wireless80211;
                     NetworkInterfaceType _type2 = NetworkInterfaceType.Ethernet;
 
-                    if ((item.NetworkInterfaceType == _type1 || item.NetworkInterfaceType == _type2) && item.OperationalStatus == OperationalStatus.Up)
-#endif 
+                    if ((item.NetworkInterfaceType == _type1 || item.NetworkInterfaceType == _type2) &&
+                        item.OperationalStatus == OperationalStatus.Up)
+#endif
                     {
                         foreach (UnicastIPAddressInformation ip in item.GetIPProperties().UnicastAddresses)
                         {
@@ -491,7 +492,11 @@ namespace UnityToolKit.ConsoleServer
             }
 
             if (!mRunningThread.IsAlive)
+            {
+                if (mRunningThread.ThreadState != ThreadState.Unstarted)
+                    mRunningThread.Abort();
                 mRunningThread.Start();
+            }
 
             mRegisterLogCallback = isRegisterLogCallback;
             // Start server
@@ -710,7 +715,7 @@ namespace UnityToolKit.ConsoleServer
         public static string LUA_ENTER_KEY = "enterlua";
 
         public static string LUA_GLOBAL = @"
-function printall()
+function all()
     if CS ~= nil then
         local goes = CS.UnityEngine.Transform.FindObjectsOfType(typeof(CS.UnityEngine.Transform))
 
@@ -723,7 +728,7 @@ end
 
 function help()
     local methods = {
-        printall = ""print and return all active loaded transforms in scene""
+        all = ""print and return all active loaded transforms in scene""
     }
 
     for i,v in pairs(methods) do
@@ -837,7 +842,7 @@ end
         private static string _logWarningFilePath;
         private const string EXCEPTION_KEY = "exception";
         public static string LUA_FILTER_KEY;
-        
+
 
         private static string LogWarningFilePath
         {
