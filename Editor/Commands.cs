@@ -6,7 +6,7 @@ namespace UnityLibrary
 {
     public class Commands
     {
-        [MenuItem("Command/Clear All (PlayerPrefs, Persistent, TemporaryCache)")]
+        [MenuItem("Commands/Clear All (PlayerPrefs, Persistent, TemporaryCache)")]
         public static void Clear()
         {
             PlayerPrefs.DeleteAll();
