@@ -21,5 +21,10 @@ namespace UnityToolKit.Utils
 
             return true;
         }
+        
+        public static bool IsNotEmpty<T>(this ICollection<T> list)
+        {
+            return !list.IsEmpty();
+        }
     }
 }
