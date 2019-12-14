@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace UnityToolKit.Utils
 {
@@ -28,10 +29,20 @@ namespace UnityToolKit.Utils
 
             return true;
         }
-        
+
         public static bool IsNotEmpty<T>(this ICollection<T> list)
         {
             return !list.IsEmpty();
+        }
+
+        public static T Item<T>(this ICollection<T> list, int index)
+        {
+            if (list.IsNotEmpty())
+            {
+                return list.ElementAt(index % list.Count);
+            }
+
+            return default(T);
         }
     }
 }
