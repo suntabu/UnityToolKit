@@ -1,4 +1,6 @@
-﻿namespace UnityToolKit.EventTrigger
+﻿using System;
+
+namespace UnityToolKit.EventTrigger
 {
     using UnityEngine;
     using System.Collections;
@@ -7,16 +9,14 @@
     public class EventTriggerListener : MonoBehaviour, IPointerClickHandler, IPointerDownHandler, IPointerEnterHandler,
         IPointerExitHandler, IPointerUpHandler, IDragHandler
     {
-        public delegate void VoidDelegate1(GameObject go, PointerEventData eventData);
+        public event Action<GameObject, PointerEventData> OnClick;
+        public event Action<GameObject, PointerEventData> OnDown;
+        public event Action<GameObject, PointerEventData> OnEnter;
+        public event Action<GameObject, PointerEventData> OnExit;
+        public event Action<GameObject, PointerEventData> OnUp;
+        public event Action<GameObject, PointerEventData> OnDragging;
 
-        public event VoidDelegate1 OnClick;
-        public event VoidDelegate1 OnDown;
-        public event VoidDelegate1 OnEnter;
-        public event VoidDelegate1 OnExit;
-        public event VoidDelegate1 OnUp;
-        public event VoidDelegate1 OnDragging;
-
-        static public EventTriggerListener Get(GameObject go)
+        public static EventTriggerListener Get(GameObject go)
         {
             EventTriggerListener listener = go.GetComponent<EventTriggerListener>();
             if (listener == null) listener = go.AddComponent<EventTriggerListener>();
@@ -51,6 +51,13 @@
         public void OnDrag(PointerEventData eventData)
         {
             if (OnDragging != null) OnDragging(gameObject, eventData);
+        }
+
+        public void SetCommonClick(Action<GameObject, PointerEventData> onPointDown,
+            Action<GameObject, PointerEventData> onPointUp)
+        {
+            this.OnDown = onPointDown;
+            this.OnUp = onPointUp;
         }
     }
 }
