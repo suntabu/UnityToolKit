@@ -11,7 +11,7 @@ public class BashCommandExecutor
     [MenuItem("Suntabu/BashExecutorTest")]
     public static void TestExecute()
     {
-        Execute(new []{"git --version","pwd","ls -al"});
+        Execute(new []{"git --version","\n","\n","pwd","\n","\n","\n","ls -al"});
     }
     
     
