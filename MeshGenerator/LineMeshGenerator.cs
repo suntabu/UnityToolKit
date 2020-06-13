@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace UnityToolKit
@@ -18,13 +19,32 @@ namespace UnityToolKit
             public Vector3 rightThickPos;
             public bool isGenDirty;
 
+            public float length;
+
             public void UpdateNormalAndTangent(MyVector3 previous, MyVector3 next)
             {
-                var p1 = (pos - previous.pos).normalized;
+                var pp = pos - previous.pos;
+                var p1 = pp.normalized;
                 var p2 = (next.pos - pos).normalized;
                 tangent = (p1 + p2).normalized;
-                normal = Vector3.Cross(new Vector3(0, 0, -1), tangent).normalized;
+                if (tangent == Vector3.zero)
+                {
+                    if (p1 != Vector3.zero)
+                    {
+                        tangent = previous.tangent;
+                    }
+                    else
+                        Debug.LogError("---> tangent is ZERO \n" + previous.pos + " -> " + this.pos + " -> " +
+                                       next.pos);
+                }
 
+                normal = Vector3.Cross(new Vector3(0, 0, -1), tangent).normalized;
+                if (normal == Vector3.zero)
+                {
+                    Debug.LogError("---> normal is ZERO\n" + previous.pos + " -> " + this.pos + " -> " + next.pos);
+                }
+
+                length = previous.length + pp.magnitude;
                 isPosDirty = false;
             }
 
@@ -97,34 +117,49 @@ namespace UnityToolKit
         {
             get
             {
-                CheckIndex(index);
-                return positions[index].pos;
+                if (CheckIndex(index, true))
+                    return positions[index].pos;
+                return Vector3.zero;
             }
             set
             {
-                CheckIndex(index);
-                var p = positions[index];
-                p.pos = value;
-                p.isPosDirty = true;
-                positions[index] = p;
-                isDirty = true;
+                if (CheckIndex(index, true))
+                {
+                    var p = positions[index];
+                    p.pos = value;
+                    p.isPosDirty = true;
+                    positions[index] = p;
+                    isDirty = true;
+                }
             }
+        }
+
+        public Vector3 GetProgressPosition(float percent)
+        {
+            return Vector3.zero;
         }
 
         public void Add(Vector3 pos)
         {
+            if (Count > 0)
+            {
+                var myVector3 = positions[Count - 1];
+                if (myVector3.pos == pos)
+                {
+                    //Debug.Log("Same pos as previous one");
+                    return;
+                }
+
+                myVector3.isPosDirty = true;
+                positions[Count - 1] = myVector3;
+            }
+
             var p = new MyVector3()
             {
                 pos = pos,
                 isGenDirty = true,
                 isPosDirty = true,
             };
-            if (positions.Count > 0)
-            {
-                var myVector3 = positions[positions.Count - 1];
-                myVector3.isPosDirty = true;
-                positions[positions.Count - 1] = myVector3;
-            }
 
             positions.Add(p);
 
@@ -134,13 +169,39 @@ namespace UnityToolKit
 
         public void RemoveAt(int index)
         {
-            //TODO:
+            if (CheckIndex(index))
+                positions.RemoveAt(index);
+            if (CheckIndex(index - 1))
+            {
+                SetGenDirty(index - 1, true);
+            }
+
+            if (CheckIndex(index - 2))
+            {
+                SetGenDirty(index - 2, true);
+            }
+
+            if (CheckIndex(index))
+            {
+                SetGenDirty(index, true);
+            }
+
+            if (CheckIndex(index + 1))
+            {
+                SetGenDirty(index + 1, true);
+            }
         }
 
         public void Clear()
         {
             positions.Clear();
             isDirty = true;
+            mesh.Clear();
+        }
+
+        public int Count
+        {
+            get { return positions.Count; }
         }
 
         public Mesh mesh;
@@ -152,21 +213,56 @@ namespace UnityToolKit
             this.mThick = thick;
         }
 
-        void CheckIndex(int index)
+        void SetGenDirty(int inx, bool isGenDirty)
         {
-            Debug.Assert(index >= 0 && index < positions.Count,
-                "Out of range index: " + index + "  Count:" + positions.Count);
+            var p = positions[inx];
+            p.isGenDirty = isGenDirty;
+            positions[inx] = p;
+        }
+
+        bool CheckIndex(int index, bool logError = false)
+        {
+            bool isValid = index >= 0 && index < Count;
+            if (logError && !isValid)
+                Debug.LogError("Index out range: " + index + "  from  " + Count);
+            return isValid;
         }
 
 
+        void SimplePositions()
+        {
+            if (Count < 2)
+            {
+                return;
+            }
+
+            var p = positions[0];
+            for (int i = 1; i < Count; i++)
+            {
+                if (p.pos == positions[i].pos)
+                {
+                    RemoveAt(i);
+                }
+            }
+        }
+
         void Generate()
         {
-            for (int i = 0; i < positions.Count; i++)
+            SimplePositions();
+            bool isMeshDirty = false;
+
+            if (Count < 2)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Count; i++)
             {
                 var p = positions[i];
                 if (p.isPosDirty)
                 {
-                    if (i > 0 && i < positions.Count - 1)
+                    isMeshDirty = true;
+                    if (i > 0 && i < Count - 1)
                     {
                         var previous = positions[i - 1];
                         var next = positions[i + 1];
@@ -179,7 +275,7 @@ namespace UnityToolKit
                             positions[i - 1] = previous;
                         }
 
-                        if (i < positions.Count - 2)
+                        if (i < Count - 2)
                         {
                             next.UpdateNormalAndTangent(p, positions[i + 2]);
                             next.isGenDirty = true;
@@ -188,11 +284,11 @@ namespace UnityToolKit
                     }
                     else if (i == 0)
                     {
-                        p.UpdateNormalAndTangent(p, i + 1 < positions.Count ? positions[i + 1] : p);
+                        p.UpdateNormalAndTangent(p, i + 1 < Count ? positions[i + 1] : p);
                     }
                     else
                     {
-                        p.UpdateNormalAndTangent(i - 1 > 0 ? positions[i - 1] : p, p);
+                        p.UpdateNormalAndTangent(i - 1 >= 0 ? positions[i - 1] : p, p);
                     }
 
                     p.isGenDirty = true;
@@ -201,22 +297,31 @@ namespace UnityToolKit
             }
 
             var vertices = mesh.vertices;
-            if (vertices == null || vertices.Length != positions.Count * 4)
-                vertices = new Vector3[positions.Count * 4];
+            if (vertices == null || vertices.Length != Count * 4)
+                vertices = new Vector3[Count * 4];
 
             var triangles = mesh.triangles;
-            if (triangles == null || triangles.Length != (positions.Count - 1) * 6)
-                triangles = new int[(positions.Count - 1) * 6];
+            if (Count > 0)
+            {
+                if (triangles == null || triangles.Length != (Count - 1) * 6)
+                    triangles = new int[(Count - 1) * 6];
+            }
+            else
+            {
+                mesh.triangles = new int[0];
+                triangles = new int[0];
+            }
 
             var uv = mesh.uv;
-            if (uv == null || uv.Length != positions.Count * 4)
-                uv = new Vector2[positions.Count * 4];
+            if (uv == null || uv.Length != Count * 4)
+                uv = new Vector2[Count * 4];
 
-            for (int i = 0; i < positions.Count; i++)
+            for (int i = 0; i < Count; i++)
             {
                 var p = positions[i];
                 if (p.isGenDirty || isDirty)
                 {
+                    isMeshDirty = true;
                     p.GenerateOtherPositions(leftWdith, rightWidth, thick);
                     positions[i] = p;
                 }
@@ -225,18 +330,18 @@ namespace UnityToolKit
                 vertices[4 * i + 1] = positions[i].rightPos;
                 vertices[4 * i + 2] = positions[i].rightThickPos;
                 vertices[4 * i + 3] = positions[i].leftThickPos;
-                if (i < positions.Count - 1)
+                if (i < Count - 1)
                 {
                     triangles[6 * i + 0] = 4 * i;
-                    triangles[6 * i + 2] = 4 * (i + 1);
-                    triangles[6 * i + 1] = 4 * (i + 1) + 1;
-                    triangles[6 * i + 3] = 4 * i;
-                    triangles[6 * i + 5] = 4 * (i + 1) + 1;
-                    triangles[6 * i + 4] = 4 * i + 1;
+                    triangles[6 * i + 1] = 4 * i + 1;
+                    triangles[6 * i + 2] = 4 * (i + 1) + 1;
+                    triangles[6 * i + 3] = 4 * (i + 1) + 1;
+                    triangles[6 * i + 4] = 4 * (i + 1);
+                    triangles[6 * i + 5] = 4 * i;
                 }
 
-                uv[4 * i + 0] = new Vector2(0, i);
-                uv[4 * i + 1] = new Vector2(1, i);
+                uv[4 * i + 0] = new Vector2(0, p.length / 64);
+                uv[4 * i + 1] = new Vector2(1, p.length / 64);
                 uv[4 * i + 2] = new Vector2(1, 1);
                 uv[4 * i + 3] = new Vector2(0, 0);
             }
@@ -244,8 +349,9 @@ namespace UnityToolKit
             mesh.vertices = vertices;
             mesh.uv = uv;
             mesh.triangles = triangles;
-            mesh.UploadMeshData(false);
-            
+            if (isMeshDirty)
+                mesh.UploadMeshData(false);
+
             isDirty = false;
         }
     }

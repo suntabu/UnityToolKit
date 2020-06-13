@@ -16,6 +16,10 @@ public class LineMeshGeneratorTest : MonoBehaviour
         var filter = GetComponent<MeshFilter>();
         filter.mesh = line.mesh;
         GetComponent<MeshRenderer>().material = mat;
+        for (int i = 0; i < 100; i++)
+        {
+            line.Add(new Vector3(i * 10, i * 10));
+        }
     }
 
     private bool isDraw = false;
@@ -25,6 +29,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
         if (Input.GetMouseButtonDown(0))
         {
             isDraw = true;
+            line.Clear();
         }
 
         if (isDraw && Input.GetMouseButton(0))
@@ -35,7 +40,6 @@ public class LineMeshGeneratorTest : MonoBehaviour
         if (Input.GetMouseButtonUp(0))
         {
             isDraw = false;
-            line.Clear();
         }
     }
 }
