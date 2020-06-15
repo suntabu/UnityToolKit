@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
@@ -6,15 +7,27 @@ namespace UnityToolKit
 {
     public class LineMeshGenerator
     {
+        [Serializable]
         public struct MyVector3
         {
             public Vector3 pos;
             public Vector3 tangent;
+
             public Vector3 normal;
+
+            //TODO: left and right normal
+            public Vector3 leftNormal;
+            public Vector3 rightNorma;
+
             public bool isPosDirty;
+
+            public float leftWidth;
+            public float rightWidth;
+            public float thick;
 
             public Vector3 leftPos;
             public Vector3 rightPos;
+            public Vector3 centerThickPos;
             public Vector3 leftThickPos;
             public Vector3 rightThickPos;
             public bool isGenDirty;
@@ -31,6 +44,7 @@ namespace UnityToolKit
                 {
                     if (p1 != Vector3.zero)
                     {
+                        // back point use previous tangent
                         tangent = previous.tangent;
                     }
                     else
@@ -38,24 +52,38 @@ namespace UnityToolKit
                                        next.pos);
                 }
 
+
                 normal = Vector3.Cross(new Vector3(0, 0, -1), tangent).normalized;
                 if (normal == Vector3.zero)
                 {
                     Debug.LogError("---> normal is ZERO\n" + previous.pos + " -> " + this.pos + " -> " + next.pos);
                 }
 
+                leftNormal = normal;
+                rightNorma = -normal;
+
+                // if (Vector3.Angle(previous.leftNormal, leftNormal) < 0)
+                // {
+                //     
+                // }
+                // Debug.Log(tangent + " ---> " + normal+"\n"+ this.ToString());
                 length = previous.length + pp.magnitude;
                 isPosDirty = false;
             }
 
-            public void GenerateOtherPositions(float leftW, float rightW, float thick)
+            public void GenerateOtherPositions()
             {
-                leftPos = pos + normal * leftW;
-                rightPos = pos - normal * rightW;
+                leftPos = pos + normal * leftWidth;
+                rightPos = pos - normal * rightWidth;
                 leftThickPos = leftPos + Vector3.forward * thick;
                 rightThickPos = rightPos + Vector3.forward * thick;
 
                 isGenDirty = false;
+            }
+
+            public override string ToString()
+            {
+                return JsonUtility.ToJson(this);
             }
         }
 
@@ -85,26 +113,18 @@ namespace UnityToolKit
         public float leftWdith
         {
             get { return mLeftWidth; }
-            set
-            {
-                mLeftWidth = value;
-                isDirty = true;
-            }
+            set { mLeftWidth = value; }
         }
 
         public float rightWidth
         {
             get { return mRightWidth; }
-            set
-            {
-                mRightWidth = value;
-                isDirty = true;
-            }
+            set { mRightWidth = value; }
         }
 
         private bool isDirty
         {
-            get => _isDirty;
+            get { return _isDirty; }
             set
             {
                 _isDirty = value;
@@ -144,7 +164,7 @@ namespace UnityToolKit
             if (Count > 0)
             {
                 var myVector3 = positions[Count - 1];
-                if (myVector3.pos == pos)
+                if (Vector3.Distance(myVector3.pos, pos) <= .02f)
                 {
                     //Debug.Log("Same pos as previous one");
                     return;
@@ -157,6 +177,9 @@ namespace UnityToolKit
             var p = new MyVector3()
             {
                 pos = pos,
+                leftWidth = leftWdith,
+                rightWidth = rightWidth,
+                thick = thick,
                 isGenDirty = true,
                 isPosDirty = true,
             };
@@ -165,6 +188,12 @@ namespace UnityToolKit
 
 
             isDirty = true;
+        }
+
+        public void AddWithWidth(Vector3 pos, float leftWidth, float rightWidth)
+        {
+            UpdateWidth(leftWidth, rightWidth, false);
+            Add(pos);
         }
 
         public void RemoveAt(int index)
@@ -199,9 +228,26 @@ namespace UnityToolKit
             mesh.Clear();
         }
 
+        public void UpdateWidth(float leftWidth, float rightWidth, bool shouldGen = true)
+        {
+            this.leftWdith = leftWidth;
+            this.rightWidth = rightWidth;
+            if (shouldGen) Generate();
+        }
+
         public int Count
         {
             get { return positions.Count; }
+        }
+
+        public int VertexCount
+        {
+            get { return positions.Count * 6; }
+        }
+
+        public int TriangleCount
+        {
+            get { return (Count - 1) * 12; }
         }
 
         public Mesh mesh;
@@ -297,14 +343,14 @@ namespace UnityToolKit
             }
 
             var vertices = mesh.vertices;
-            if (vertices == null || vertices.Length != Count * 4)
-                vertices = new Vector3[Count * 4];
+            if (vertices == null || vertices.Length != VertexCount)
+                vertices = new Vector3[VertexCount];
 
             var triangles = mesh.triangles;
             if (Count > 0)
             {
-                if (triangles == null || triangles.Length != (Count - 1) * 6)
-                    triangles = new int[(Count - 1) * 6];
+                if (triangles == null || triangles.Length != TriangleCount)
+                    triangles = new int[TriangleCount];
             }
             else
             {
@@ -313,8 +359,8 @@ namespace UnityToolKit
             }
 
             var uv = mesh.uv;
-            if (uv == null || uv.Length != Count * 4)
-                uv = new Vector2[Count * 4];
+            if (uv == null || uv.Length != VertexCount)
+                uv = new Vector2[VertexCount];
 
             for (int i = 0; i < Count; i++)
             {
@@ -322,28 +368,38 @@ namespace UnityToolKit
                 if (p.isGenDirty || isDirty)
                 {
                     isMeshDirty = true;
-                    p.GenerateOtherPositions(leftWdith, rightWidth, thick);
+                    p.GenerateOtherPositions();
                     positions[i] = p;
                 }
 
-                vertices[4 * i] = positions[i].leftPos;
-                vertices[4 * i + 1] = positions[i].rightPos;
-                vertices[4 * i + 2] = positions[i].rightThickPos;
-                vertices[4 * i + 3] = positions[i].leftThickPos;
+                vertices[6 * i] = positions[i].leftPos;
+                vertices[6 * i + 1] = positions[i].rightPos;
+                vertices[6 * i + 2] = positions[i].pos;
+                vertices[6 * i + 3] = positions[i].leftThickPos;
+                vertices[6 * i + 4] = positions[i].rightThickPos;
+                vertices[6 * i + 5] = positions[i].centerThickPos;
                 if (i < Count - 1)
                 {
-                    triangles[6 * i + 0] = 4 * i;
-                    triangles[6 * i + 1] = 4 * i + 1;
-                    triangles[6 * i + 2] = 4 * (i + 1) + 1;
-                    triangles[6 * i + 3] = 4 * (i + 1) + 1;
-                    triangles[6 * i + 4] = 4 * (i + 1);
-                    triangles[6 * i + 5] = 4 * i;
+                    triangles[12 * i + 0] = 6 * i;
+                    triangles[12 * i + 1] = 6 * i + 2;
+                    triangles[12 * i + 2] = 6 * (i + 1) + 2;
+                    triangles[12 * i + 3] = 6 * (i + 1) + 2;
+                    triangles[12 * i + 4] = 6 * (i + 1);
+                    triangles[12 * i + 5] = 6 * i;
+                    triangles[12 * i + 6] = 6 * i + 2;
+                    triangles[12 * i + 7] = 6 * i + 1;
+                    triangles[12 * i + 8] = 6 * (i + 1) + 1;
+                    triangles[12 * i + 9] = 6 * (i + 1) + 1;
+                    triangles[12 * i + 10] = 6 * (i + 1) + 2;
+                    triangles[12 * i + 11] = 6 * i + 2;
                 }
 
-                uv[4 * i + 0] = new Vector2(0, p.length / 64);
-                uv[4 * i + 1] = new Vector2(1, p.length / 64);
-                uv[4 * i + 2] = new Vector2(1, 1);
-                uv[4 * i + 3] = new Vector2(0, 0);
+                uv[6 * i + 0] = new Vector2(0, p.length / 64);
+                uv[6 * i + 1] = new Vector2(1, p.length / 64);
+                uv[6 * i + 2] = new Vector2(0.5f, p.length / 64);
+                uv[6 * i + 3] = new Vector2(0, 0);
+                uv[6 * i + 4] = new Vector2(1, 1);
+                uv[6 * i + 5] = new Vector2(0, 0);
             }
 
             mesh.vertices = vertices;
