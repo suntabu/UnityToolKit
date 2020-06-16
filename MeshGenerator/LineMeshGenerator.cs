@@ -15,9 +15,8 @@ namespace UnityToolKit
 
             public Vector3 normal;
 
-            //TODO: left and right normal
             public Vector3 leftNormal;
-            public Vector3 rightNorma;
+            public Vector3 rightNormal;
 
             public bool isPosDirty;
 
@@ -32,7 +31,10 @@ namespace UnityToolKit
             public Vector3 rightThickPos;
             public bool isGenDirty;
 
-            public float length;
+            public float lengthInAll;
+            public float previousLength;
+            public float nextLength;
+
 
             public void UpdateNormalAndTangent(MyVector3 previous, MyVector3 next)
             {
@@ -60,21 +62,32 @@ namespace UnityToolKit
                 }
 
                 leftNormal = normal;
-                rightNorma = -normal;
+                rightNormal = -normal;
+                previousLength = pp.magnitude;
+                previous.nextLength = previousLength;
 
-                // if (Vector3.Angle(previous.leftNormal, leftNormal) < 0)
-                // {
-                //     
-                // }
+
                 // Debug.Log(tangent + " ---> " + normal+"\n"+ this.ToString());
-                length = previous.length + pp.magnitude;
+                lengthInAll = previous.lengthInAll + pp.magnitude;
                 isPosDirty = false;
             }
 
-            public void GenerateOtherPositions()
+            public void GenerateOtherPositions(MyVector3 previous)
             {
-                leftPos = pos + normal * leftWidth;
-                rightPos = pos - normal * rightWidth;
+                leftPos = pos + leftNormal * leftWidth;
+
+                if (previousLength < leftWidth + previous.leftWidth)
+                {
+                    leftPos = (leftPos + previous.leftPos) * 0.5f;
+                }
+
+                rightPos = pos + rightNormal * rightWidth;
+                if (previousLength < rightWidth + previous.rightWidth)
+                {
+                    rightPos = (rightPos + previous.rightPos) * 0.5f;
+                }
+
+
                 leftThickPos = leftPos + Vector3.forward * thick;
                 rightThickPos = rightPos + Vector3.forward * thick;
 
@@ -156,6 +169,7 @@ namespace UnityToolKit
 
         public Vector3 GetProgressPosition(float percent)
         {
+            //TODO:
             return Vector3.zero;
         }
 
@@ -368,7 +382,7 @@ namespace UnityToolKit
                 if (p.isGenDirty || isDirty)
                 {
                     isMeshDirty = true;
-                    p.GenerateOtherPositions();
+                    p.GenerateOtherPositions(i == 0 ? p : positions[i - 1]);
                     positions[i] = p;
                 }
 
@@ -394,9 +408,9 @@ namespace UnityToolKit
                     triangles[12 * i + 11] = 6 * i + 2;
                 }
 
-                uv[6 * i + 0] = new Vector2(0, p.length / 64);
-                uv[6 * i + 1] = new Vector2(1, p.length / 64);
-                uv[6 * i + 2] = new Vector2(0.5f, p.length / 64);
+                uv[6 * i + 0] = new Vector2(0, p.lengthInAll / 64);
+                uv[6 * i + 1] = new Vector2(1, p.lengthInAll / 64);
+                uv[6 * i + 2] = new Vector2(0.5f, p.lengthInAll / 64);
                 uv[6 * i + 3] = new Vector2(0, 0);
                 uv[6 * i + 4] = new Vector2(1, 1);
                 uv[6 * i + 5] = new Vector2(0, 0);
