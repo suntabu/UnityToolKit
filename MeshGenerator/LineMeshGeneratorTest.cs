@@ -39,10 +39,10 @@ public class LineMeshGeneratorTest : MonoBehaviour
     private float t;
     void Update()
     {
-        // for (int i = 0; i < positions.Length; i++)
-        // {
-        //     line[i] = positions[i];
-        // }
+        for (int i = 0; i < positions.Length; i++)
+        {
+            line[i] = positions[i];
+        }
         
         var w = (Mathf.Sin(t* 4) + 1.25f) * width;
         if (Input.GetMouseButtonDown(0))

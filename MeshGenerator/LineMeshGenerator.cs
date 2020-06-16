@@ -10,6 +10,7 @@ namespace UnityToolKit
         [Serializable]
         public struct MyVector3
         {
+            public int index;
             public Vector3 pos;
             public Vector3 tangent;
 
@@ -35,7 +36,6 @@ namespace UnityToolKit
             public bool isGenDirty;
 
             public float lengthInAll;
-            public float previousLength;
 
 
             public void UpdateNormalAndTangent(MyVector3 previous, MyVector3 next)
@@ -64,35 +64,106 @@ namespace UnityToolKit
                     Debug.LogError("---> normal is ZERO\n" + previous.pos + " -> " + this.pos + " -> " + next.pos);
                 }
 
+                // var last = 
+
                 leftNormal = normal;
                 rightNormal = -normal;
-                previousLength = pp.magnitude;
-
-
                 // Debug.Log(tangent + " ---> " + normal+"\n"+ this.ToString());
                 lengthInAll = previous.lengthInAll + pp.magnitude;
                 isPosDirty = false;
             }
 
-            public void GenerateOtherPositions(MyVector3 previous)
+            public void GenerateOtherPositions(MyVector3 previous, List<MyVector3> points)
             {
                 leftPos = pos + leftNormal * leftWidth;
-
-                if (previousLength < leftWidth + previous.leftWidth && Vector3.Angle(leftNormal, forward) < 90)
-                {
-                    // Debug.LogError("--->left");
-                    leftPos = (leftPos + previous.leftPos) * 0.5f;
-                    previous.leftPos = leftPos;
-                }
-
                 rightPos = pos + rightNormal * rightWidth;
-                if (previousLength < rightWidth + previous.rightWidth && Vector3.Angle(rightNormal, forward) < 90)
+
+                /*
+                if (index > 0)
                 {
-                    // Debug.LogError("--->right");
-                    rightPos = (rightPos + previous.rightPos) * 0.5f;
-                    previous.rightPos = rightPos;
+                    var p1 = previous.pos;
+                    var p2 = previous.leftPos;
+                    var p3 = previous.rightPos;
+                    var p4 = pos;
+                    var p5 = leftPos;
+                    var p6 = rightPos;
+                    if (Vector3.Dot(Vector3.Cross(p2 - p1, p5 - p2), Vector3.Cross(p5 - p1, p1 - p4 )) < 0)
+                    {
+                        Debug.LogError("switch");
+                        var temp = points[index - 1];
+                        var p = temp.leftPos;
+                        temp.leftPos = leftPos;
+                        points[index - 1] = temp;
+                        leftPos = p;
+                    }
+                    
+                    if (Vector3.Dot(Vector3.Cross(p3 - p1, p6 - p3), Vector3.Cross(p6 - p1, p1 - p4)) < 0)
+                    {
+                        Debug.LogError("switch");
+                        var temp = points[index - 1];
+                        var p = temp.rightPos;
+                        temp.rightPos = rightPos;
+                        points[index - 1] = temp;
+                        rightPos = p;
+                    }
+                }
+                 */
+
+
+                #region not good
+
+                if (Vector3.Angle(forward, previous.forward) > 30)
+                {
+                    var p = Vector3.zero;
+                    var pre = index > 5 ? 5 : index;
+                    var next = points.Count - index - 1 > 5 ? 5 : points.Count - index - 1;
+                    var isLeft = Vector3.Angle(forward, normal) < 90;
+                    var c = 0;
+                    for (int i = 1; i <= pre; i++)
+                    {
+                        var temp = points[index - i];
+                        // if (Vector3.Distance(pos, temp.pos) < leftWidth * 2)
+                        {
+                            p += isLeft ? temp.leftPos : temp.rightPos;
+                            c++;
+                        }
+                    }
+
+                    for (int i = 1; i <= next; i++)
+                    {
+                        if (index + 1 < points.Count - 1)
+                        {
+                            var temp = points[index + i];
+                            // if (Vector3.Distance(pos, temp.pos) < leftWidth* 2)
+                            {
+                                p += isLeft ? temp.leftPos : temp.rightPos;
+                                c++;
+                            }
+                        }
+                    }
+
+                    p = (p + pos) / (c + 1f);
+                    Debug.Log("----> " + c + "    " + (isLeft ? "left" : "right"));
+
+                    for (int i = -pre; i <= next; i++)
+                    {
+                        var temp = points[index + i];
+                        if (isLeft)
+                        {
+                            Debug.LogError(temp.leftPos + "   --->   " + p);
+                            temp.leftPos = p;
+                        }
+                        else
+                        {
+                            Debug.LogError(temp.rightPos + "   --->   " + p);
+                            temp.rightPos = p;
+                        }
+
+                        points[index + i] = temp;
+                    }
                 }
 
+                #endregion
 
                 leftThickPos = leftPos + Vector3.forward * thick;
                 rightThickPos = rightPos + Vector3.forward * thick;
@@ -184,7 +255,7 @@ namespace UnityToolKit
             if (Count > 0)
             {
                 var myVector3 = positions[Count - 1];
-                if (Vector3.Distance(myVector3.pos, pos) <= .35f*(leftWdith + rightWidth))
+                if (Vector3.Distance(myVector3.pos, pos) <= .25f * (leftWdith + rightWidth))
                 {
                     //Debug.Log("Same pos as previous one");
                     return;
@@ -196,6 +267,7 @@ namespace UnityToolKit
 
             var p = new MyVector3()
             {
+                index = positions.Count,
                 pos = pos,
                 leftWidth = leftWdith,
                 rightWidth = rightWidth,
@@ -206,13 +278,12 @@ namespace UnityToolKit
 
             positions.Add(p);
 
-
             isDirty = true;
         }
 
-        public void AddWithWidth(Vector3 pos, float leftWidth, float rightWidth)
+        public void AddWithWidth(Vector3 pos, float lw, float rw)
         {
-            UpdateWidth(leftWidth, rightWidth, false);
+            UpdateWidth(lw, rw, false);
             Add(pos);
         }
 
@@ -248,10 +319,10 @@ namespace UnityToolKit
             mesh.Clear();
         }
 
-        public void UpdateWidth(float leftWidth, float rightWidth, bool shouldGen = true)
+        public void UpdateWidth(float lw, float rw, bool shouldGen = true)
         {
-            this.leftWdith = leftWidth;
-            this.rightWidth = rightWidth;
+            this.leftWdith = lw;
+            this.rightWidth = rw;
             if (shouldGen) Generate();
         }
 
@@ -388,16 +459,21 @@ namespace UnityToolKit
                 if (p.isGenDirty || isDirty)
                 {
                     isMeshDirty = true;
-                    p.GenerateOtherPositions(i == 0 ? p : positions[i - 1]);
+                    p.GenerateOtherPositions(i == 0 ? p : positions[i - 1], positions);
                     positions[i] = p;
                 }
+           
+            }
 
-                vertices[6 * i] = positions[i].leftPos;
-                vertices[6 * i + 1] = positions[i].rightPos;
-                vertices[6 * i + 2] = positions[i].pos;
-                vertices[6 * i + 3] = positions[i].leftThickPos;
-                vertices[6 * i + 4] = positions[i].rightThickPos;
-                vertices[6 * i + 5] = positions[i].centerThickPos;
+            for (int i = 0; i < Count; i++)
+            {
+                var p = positions[i];
+                vertices[6 * i] = p.leftPos;
+                vertices[6 * i + 1] = p.rightPos;
+                vertices[6 * i + 2] = p.pos;
+                vertices[6 * i + 3] = p.leftThickPos;
+                vertices[6 * i + 4] = p.rightThickPos;
+                vertices[6 * i + 5] = p.centerThickPos;
                 if (i < Count - 1)
                 {
                     triangles[12 * i + 0] = 6 * i;
