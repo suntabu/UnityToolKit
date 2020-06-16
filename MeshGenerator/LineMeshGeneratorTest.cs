@@ -11,7 +11,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
 
     [SerializeField] private float mWidth = 0.2f;
 
-
+    public Vector3[] positions;
     public float width
     {
         get { return mWidth; }
@@ -29,9 +29,9 @@ public class LineMeshGeneratorTest : MonoBehaviour
         var filter = GetComponent<MeshFilter>();
         filter.mesh = line.mesh;
         GetComponent<MeshRenderer>().material = mat;
-        for (int i = 0; i < 100; i++)
+        for (int i = 0; i < positions.Length; i++)
         {
-            line.Add(new Vector3(i * 10, i * 10));
+            line.Add(positions[i]);
         }
     }
 
@@ -39,13 +39,18 @@ public class LineMeshGeneratorTest : MonoBehaviour
     private float t;
     void Update()
     {
+        // for (int i = 0; i < positions.Length; i++)
+        // {
+        //     line[i] = positions[i];
+        // }
+        
         var w = (Mathf.Sin(t* 4) + 1.25f) * width;
         if (Input.GetMouseButtonDown(0))
         {
             isDraw = true;
             line.Clear();
         }
-
+        
         if (isDraw && Input.GetMouseButton(0))
         {
             // t += Time.deltaTime;
@@ -54,7 +59,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
             var p = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             line.AddWithWidth(p, w, w);
         }
-
+        
         if (Input.GetMouseButtonUp(0))
         {
             isDraw = false;

@@ -13,10 +13,13 @@ namespace UnityToolKit
             public Vector3 pos;
             public Vector3 tangent;
 
+            public Vector3 forward;
+
             public Vector3 normal;
 
             public Vector3 leftNormal;
             public Vector3 rightNormal;
+
 
             public bool isPosDirty;
 
@@ -33,7 +36,6 @@ namespace UnityToolKit
 
             public float lengthInAll;
             public float previousLength;
-            public float nextLength;
 
 
             public void UpdateNormalAndTangent(MyVector3 previous, MyVector3 next)
@@ -41,6 +43,7 @@ namespace UnityToolKit
                 var pp = pos - previous.pos;
                 var p1 = pp.normalized;
                 var p2 = (next.pos - pos).normalized;
+                forward = p2;
                 tangent = (p1 + p2).normalized;
                 if (tangent == Vector3.zero)
                 {
@@ -64,7 +67,6 @@ namespace UnityToolKit
                 leftNormal = normal;
                 rightNormal = -normal;
                 previousLength = pp.magnitude;
-                previous.nextLength = previousLength;
 
 
                 // Debug.Log(tangent + " ---> " + normal+"\n"+ this.ToString());
@@ -76,15 +78,19 @@ namespace UnityToolKit
             {
                 leftPos = pos + leftNormal * leftWidth;
 
-                if (previousLength < leftWidth + previous.leftWidth)
+                if (previousLength < leftWidth + previous.leftWidth && Vector3.Angle(leftNormal, forward) < 90)
                 {
+                    // Debug.LogError("--->left");
                     leftPos = (leftPos + previous.leftPos) * 0.5f;
+                    previous.leftPos = leftPos;
                 }
 
                 rightPos = pos + rightNormal * rightWidth;
-                if (previousLength < rightWidth + previous.rightWidth)
+                if (previousLength < rightWidth + previous.rightWidth && Vector3.Angle(rightNormal, forward) < 90)
                 {
+                    // Debug.LogError("--->right");
                     rightPos = (rightPos + previous.rightPos) * 0.5f;
+                    previous.rightPos = rightPos;
                 }
 
 
@@ -178,7 +184,7 @@ namespace UnityToolKit
             if (Count > 0)
             {
                 var myVector3 = positions[Count - 1];
-                if (Vector3.Distance(myVector3.pos, pos) <= .02f)
+                if (Vector3.Distance(myVector3.pos, pos) <= .35f*(leftWdith + rightWidth))
                 {
                     //Debug.Log("Same pos as previous one");
                     return;
