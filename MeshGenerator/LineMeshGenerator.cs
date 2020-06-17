@@ -256,12 +256,13 @@ namespace UnityToolKit
 
             for (int i = 0; i < curved.Count; i++)
             {
-                var inx = Count - (curved.Count - smoothStep) + i +1;
-                if (i < curved.Count - smoothStep && CheckIndex(inx))
+                var inx = c == 5 ? Count - (curved.Count - smoothStep) + i + 1 : i;
+                if (((c == 5 && i < curved.Count - smoothStep) || c < 5) && CheckIndex(inx))
                 {
                     var temp = positions[inx];
                     var ratio = i * 1f / curved.Count;
                     temp.pos = (1 - ratio) * temp.pos + ratio * curved[i];
+                    temp.isPosDirty = true;
                     positions[inx] = temp;
                 }
                 else
