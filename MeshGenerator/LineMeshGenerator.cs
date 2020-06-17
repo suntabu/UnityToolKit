@@ -58,7 +58,7 @@ namespace UnityToolKit
                 }
 
 
-                normal = Vector3.Cross(new Vector3(0, 0, -1), tangent).normalized;
+                normal = Vector3.Cross(tangent, new Vector3(0, 0, -1)).normalized;
                 if (normal == Vector3.zero)
                 {
                     Debug.LogError("---> normal is ZERO\n" + previous.pos + " -> " + this.pos + " -> " + next.pos);
@@ -78,86 +78,44 @@ namespace UnityToolKit
                 leftPos = pos + leftNormal * leftWidth;
                 rightPos = pos + rightNormal * rightWidth;
 
-                /*
-                if (index > 0)
-                {
-                    var p1 = previous.pos;
-                    var p2 = previous.leftPos;
-                    var p3 = previous.rightPos;
-                    var p4 = pos;
-                    var p5 = leftPos;
-                    var p6 = rightPos;
-                    if (Vector3.Dot(Vector3.Cross(p2 - p1, p5 - p2), Vector3.Cross(p5 - p1, p1 - p4 )) < 0)
-                    {
-                        Debug.LogError("switch");
-                        var temp = points[index - 1];
-                        var p = temp.leftPos;
-                        temp.leftPos = leftPos;
-                        points[index - 1] = temp;
-                        leftPos = p;
-                    }
-                    
-                    if (Vector3.Dot(Vector3.Cross(p3 - p1, p6 - p3), Vector3.Cross(p6 - p1, p1 - p4)) < 0)
-                    {
-                        Debug.LogError("switch");
-                        var temp = points[index - 1];
-                        var p = temp.rightPos;
-                        temp.rightPos = rightPos;
-                        points[index - 1] = temp;
-                        rightPos = p;
-                    }
-                }
-                 */
-
-
                 #region not good
 
-                /*if (Vector3.Angle(forward, previous.forward) > 30)
+                /*if (Vector3.Angle(forward, previous.forward) > 20)
                 {
                     var p = Vector3.zero;
-                    var pre = index > 5 ? 5 : index;
-                    var next = points.Count - index - 1 > 5 ? 5 : points.Count - index - 1;
+                    var pre = index > 2 ? 2 : index;
                     var isLeft = Vector3.Angle(forward, normal) < 90;
                     var c = 0;
                     for (int i = 1; i <= pre; i++)
                     {
                         var temp = points[index - i];
-                        // if (Vector3.Distance(pos, temp.pos) < leftWidth * 2)
+                        if (Vector3.Distance(pos, temp.pos) < leftWidth * 2)
                         {
                             p += isLeft ? temp.leftPos : temp.rightPos;
                             c++;
                         }
                     }
 
-                    for (int i = 1; i <= next; i++)
-                    {
-                        if (index + 1 < points.Count - 1)
-                        {
-                            var temp = points[index + i];
-                            // if (Vector3.Distance(pos, temp.pos) < leftWidth* 2)
-                            {
-                                p += isLeft ? temp.leftPos : temp.rightPos;
-                                c++;
-                            }
-                        }
-                    }
-
                     p = (p + pos) / (c + 1f);
                     Debug.Log("----> " + c + "    " + (isLeft ? "left" : "right"));
 
-                    for (int i = -pre; i <= next; i++)
+                    for (int i = -pre; i <= 0; i++)
                     {
                         var temp = points[index + i];
-                        if (isLeft)
+                        if (Vector3.Distance(pos, temp.pos) < leftWidth * 2)
                         {
-                            Debug.LogError(temp.leftPos + "   --->   " + p);
-                            temp.leftPos = p;
+                            if (isLeft)
+                            {
+                                Debug.LogError(temp.leftPos + "   --->   " + p);
+                                temp.leftPos = p;
+                            }
+                            else
+                            {
+                                Debug.LogError(temp.rightPos + "   --->   " + p);
+                                temp.rightPos = p;
+                            }
                         }
-                        else
-                        {
-                            Debug.LogError(temp.rightPos + "   --->   " + p);
-                            temp.rightPos = p;
-                        }
+                       
 
                         points[index + i] = temp;
                     }
@@ -173,13 +131,15 @@ namespace UnityToolKit
 
             public override string ToString()
             {
-                return JsonUtility.ToJson(this);
+                return pos + "\n" + JsonUtility.ToJson(this);
+                // return JsonUtility.ToJson(this);
             }
         }
 
         public LineMeshGenerator()
         {
             positions = new List<MyVector3>();
+            tempPostions = new List<Vector3>();
             mesh = new Mesh();
         }
 
@@ -189,6 +149,10 @@ namespace UnityToolKit
         private float mLeftWidth, mRightWidth;
 
         private float mThick;
+
+        private int smoothStep = 4;
+
+        private List<Vector3> tempPostions;
 
         public float thick
         {
@@ -249,11 +213,12 @@ namespace UnityToolKit
             Gizmos.matrix = transform.localToWorldMatrix;
             for (int i = 0; i < Count; i++)
             {
-                Gizmos.color = Color.blue;
+                Gizmos.color = new Color(0, 0, 1, 1 - i * 1f / Count);
                 Gizmos.DrawSphere(this[i], .025f);
                 Gizmos.color = Color.yellow;
                 Gizmos.DrawRay(this[i], positions[i].leftNormal * .5f);
-                Gizmos.DrawRay(this[i], positions[i].rightNormal* .5f);
+                Gizmos.color = Color.cyan;
+                Gizmos.DrawRay(this[i], positions[i].rightNormal * .5f);
             }
         }
 #endif
@@ -263,33 +228,72 @@ namespace UnityToolKit
             return Vector3.zero;
         }
 
+
         public void Add(Vector3 pos)
         {
-            if (Count > 0)
+            if (tempPostions.Count > 0)
             {
-                var myVector3 = positions[Count - 1];
-                if (Vector3.Distance(myVector3.pos, pos) <= .25f * (leftWdith + rightWidth))
+                if (Vector3.Distance(tempPostions.Last(), pos) <= 1f * (leftWdith + rightWidth))
                 {
                     //Debug.Log("Same pos as previous one");
                     return;
                 }
-
-                myVector3.isPosDirty = true;
-                positions[Count - 1] = myVector3;
             }
 
-            var p = new MyVector3()
-            {
-                index = positions.Count,
-                pos = pos,
-                leftWidth = leftWdith,
-                rightWidth = rightWidth,
-                thick = thick,
-                isGenDirty = true,
-                isPosDirty = true,
-            };
+            tempPostions.Add(pos);
 
-            positions.Add(p);
+            if (tempPostions.Count < 2)
+            {
+                return;
+            }
+
+            var c = tempPostions.Count >= 5 ? 5 : tempPostions.Count;
+            // var curved = MakeSmoothCurve(tempPostions, 4);
+
+
+            var curved = MakeSmoothCurve(tempPostions.GetRange(tempPostions.Count - c, c), smoothStep);
+            Debug.Log((tempPostions.Count - c) + "    " + c + "--->" + curved.Count);
+
+            for (int i = 0; i < curved.Count; i++)
+            {
+                var inx = Count - (curved.Count - smoothStep) + i +1;
+                if (i < curved.Count - smoothStep && CheckIndex(inx))
+                {
+                    var temp = positions[inx];
+                    var ratio = i * 1f / curved.Count;
+                    temp.pos = (1 - ratio) * temp.pos + ratio * curved[i];
+                    positions[inx] = temp;
+                }
+                else
+                {
+                    if (Count > 0)
+                    {
+                        if (Vector3.Distance(positions.Last().pos, curved[i]) <= 0.1f)
+                        {
+                            //Debug.Log("Same pos as previous one");
+                            continue;
+                        }
+
+                        var temp = positions.Last();
+                        temp.isPosDirty = true;
+                        positions[Count - 1] = temp;
+                    }
+
+                    var p = new MyVector3()
+                    {
+                        index = positions.Count,
+                        pos = curved[i],
+                        leftWidth = leftWdith,
+                        rightWidth = rightWidth,
+                        thick = thick,
+                        isGenDirty = true,
+                        isPosDirty = true,
+                    };
+
+                    positions.Add(p);
+                }
+            }
+
 
             isDirty = true;
         }
@@ -328,6 +332,7 @@ namespace UnityToolKit
         public void Clear()
         {
             positions.Clear();
+            tempPostions.Clear();
             isDirty = true;
             mesh.Clear();
         }
@@ -489,17 +494,17 @@ namespace UnityToolKit
                 if (i < Count - 1)
                 {
                     triangles[12 * i + 0] = 6 * i;
-                    triangles[12 * i + 1] = 6 * i + 2;
-                    triangles[12 * i + 2] = 6 * (i + 1) + 2;
+                    triangles[12 * i + 1] = 6 * (i + 1) + 2;
+                    triangles[12 * i + 2] = 6 * i + 2;
                     triangles[12 * i + 3] = 6 * (i + 1) + 2;
-                    triangles[12 * i + 4] = 6 * (i + 1);
-                    triangles[12 * i + 5] = 6 * i;
+                    triangles[12 * i + 4] = 6 * i;
+                    triangles[12 * i + 5] = 6 * (i + 1);
                     triangles[12 * i + 6] = 6 * i + 2;
-                    triangles[12 * i + 7] = 6 * i + 1;
-                    triangles[12 * i + 8] = 6 * (i + 1) + 1;
+                    triangles[12 * i + 7] = 6 * (i + 1) + 1;
+                    triangles[12 * i + 8] = 6 * i + 1;
                     triangles[12 * i + 9] = 6 * (i + 1) + 1;
-                    triangles[12 * i + 10] = 6 * (i + 1) + 2;
-                    triangles[12 * i + 11] = 6 * i + 2;
+                    triangles[12 * i + 10] = 6 * i + 2;
+                    triangles[12 * i + 11] = 6 * (i + 1) + 2;
                 }
 
                 uv[6 * i + 0] = new Vector2(0, p.lengthInAll / 64);
@@ -517,6 +522,42 @@ namespace UnityToolKit
                 mesh.UploadMeshData(false);
 
             isDirty = false;
+        }
+
+        public static List<Vector3> MakeSmoothCurve(List<Vector3> arrayToCurve, float smoothness)
+        {
+            List<Vector3> points;
+            List<Vector3> curvedPoints;
+            int pointsLength = 0;
+            int curvedLength = 0;
+
+            if (smoothness < 1.0f) smoothness = 1.0f;
+
+            pointsLength = arrayToCurve.Count;
+
+            curvedLength = (pointsLength * Mathf.RoundToInt(smoothness)) - 1;
+            curvedPoints = new List<Vector3>();
+
+            float t = 0.0f;
+            for (int pointInTimeOnCurve = 0; pointInTimeOnCurve < curvedLength + 1; pointInTimeOnCurve++)
+            {
+                t = Mathf.InverseLerp(0, curvedLength, pointInTimeOnCurve);
+
+                points = new List<Vector3>(arrayToCurve);
+
+                for (int j = pointsLength - 1; j > 0; j--)
+                {
+                    for (int i = 0; i < j; i++)
+                    {
+                        points[i] = (1 - t) * points[i] + t * points[i + 1];
+                    }
+                }
+
+                curvedPoints.Add(points.First());
+            }
+
+
+            return curvedPoints;
         }
     }
 }

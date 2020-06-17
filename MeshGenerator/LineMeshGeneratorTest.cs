@@ -33,7 +33,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
         GetComponent<MeshRenderer>().material = mat;
         for (int i = 0; i < positions.Length; i++)
         {
-            line.Add(positions[i]);
+            // line.Add(positions[i]);
         }
     }
 
@@ -44,7 +44,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
     {
         for (int i = 0; i < positions.Length; i++)
         {
-            line[i] = positions[i];
+            // line[i] = positions[i];
         }
 
         var w = (Mathf.Sin(t * 4) + 1.25f) * width;
