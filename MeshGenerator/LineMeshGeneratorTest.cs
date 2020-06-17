@@ -39,6 +39,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
 
     private bool isDraw = false;
     private float t;
+    private GameObject[] gos;
 
     void Update()
     {
@@ -51,7 +52,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
         if (Input.GetMouseButtonDown(0))
         {
             isDraw = true;
-            line.Clear();
+            // line.Clear();
         }
 
         if (isDraw && Input.GetMouseButton(0))
@@ -66,6 +67,29 @@ public class LineMeshGeneratorTest : MonoBehaviour
         if (Input.GetMouseButtonUp(0))
         {
             isDraw = false;
+        }
+
+        if (gos != null)
+        {
+            for (int i = 0; i < gos.Length; i++)
+            {
+                gos[i].transform.localScale = Mathf.Sin(i * 2f / gos.Length * Mathf.PI + Time.time) * Vector3.one;
+            }
+        }
+    }
+
+    private void OnGUI()
+    {
+        if (GUI.Button(new Rect(10, 10, 100, 100), "Click"))
+        {
+            gos = new GameObject[50];
+            for (int i = 0; i < gos.Length; i++)
+            {
+                var p = line.GetProgressPosition(0.02f * (i + 1));
+                gos[i] = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+                gos[i].transform.SetParent(this.transform);
+                gos[i].transform.localPosition = p;
+            }
         }
     }
 

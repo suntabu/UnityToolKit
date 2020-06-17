@@ -224,8 +224,24 @@ namespace UnityToolKit
 #endif
         public Vector3 GetProgressPosition(float percent)
         {
-            //TODO:
-            return Vector3.zero;
+            Vector3 p = Vector3.zero;
+
+            if (Count > 2)
+            {
+                var last = positions.Last();
+                var length = last.lengthInAll * percent;
+                for (int i = Count - 1; i >= 0; i--)
+                {
+                    if (length > positions[i].lengthInAll)
+                    {
+                        p = positions[i].pos + (length - positions[i].lengthInAll) * positions[i].forward;
+
+                        break;
+                    }
+                }
+            }
+
+            return p;
         }
 
 
