@@ -252,7 +252,7 @@ namespace UnityToolKit
 
 
             var curved = MakeSmoothCurve(tempPostions.GetRange(tempPostions.Count - c, c), smoothStep);
-            Debug.Log((tempPostions.Count - c) + "    " + c + "--->" + curved.Count);
+            // Debug.Log((tempPostions.Count - c) + "    " + c + "--->" + curved.Count);
 
             for (int i = 0; i < curved.Count; i++)
             {
