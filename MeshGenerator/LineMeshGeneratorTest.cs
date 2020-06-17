@@ -1,4 +1,5 @@
-﻿using System.Collections;
+﻿using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityToolKit;
@@ -12,6 +13,7 @@ public class LineMeshGeneratorTest : MonoBehaviour
     [SerializeField] private float mWidth = 0.2f;
 
     public Vector3[] positions;
+
     public float width
     {
         get { return mWidth; }
@@ -37,20 +39,21 @@ public class LineMeshGeneratorTest : MonoBehaviour
 
     private bool isDraw = false;
     private float t;
+
     void Update()
     {
         for (int i = 0; i < positions.Length; i++)
         {
             line[i] = positions[i];
         }
-        
-        var w = (Mathf.Sin(t* 4) + 1.25f) * width;
+
+        var w = (Mathf.Sin(t * 4) + 1.25f) * width;
         if (Input.GetMouseButtonDown(0))
         {
             isDraw = true;
             line.Clear();
         }
-        
+
         if (isDraw && Input.GetMouseButton(0))
         {
             // t += Time.deltaTime;
@@ -59,10 +62,16 @@ public class LineMeshGeneratorTest : MonoBehaviour
             var p = Camera.main.ScreenToWorldPoint(Input.mousePosition);
             line.AddWithWidth(p, w, w);
         }
-        
+
         if (Input.GetMouseButtonUp(0))
         {
             isDraw = false;
         }
+    }
+
+    private void OnDrawGizmos()
+    {
+        if (line != null)
+            line.DrawGizmos(this.transform);
     }
 }

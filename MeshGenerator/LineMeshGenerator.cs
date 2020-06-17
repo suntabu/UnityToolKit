@@ -112,7 +112,7 @@ namespace UnityToolKit
 
                 #region not good
 
-                if (Vector3.Angle(forward, previous.forward) > 30)
+                /*if (Vector3.Angle(forward, previous.forward) > 30)
                 {
                     var p = Vector3.zero;
                     var pre = index > 5 ? 5 : index;
@@ -161,7 +161,7 @@ namespace UnityToolKit
 
                         points[index + i] = temp;
                     }
-                }
+                }*/
 
                 #endregion
 
@@ -243,7 +243,20 @@ namespace UnityToolKit
                 }
             }
         }
-
+#if UNITY_EDITOR
+        public void DrawGizmos(Transform transform)
+        {
+            Gizmos.matrix = transform.localToWorldMatrix;
+            for (int i = 0; i < Count; i++)
+            {
+                Gizmos.color = Color.blue;
+                Gizmos.DrawSphere(this[i], .025f);
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawRay(this[i], positions[i].leftNormal * .5f);
+                Gizmos.DrawRay(this[i], positions[i].rightNormal* .5f);
+            }
+        }
+#endif
         public Vector3 GetProgressPosition(float percent)
         {
             //TODO:
@@ -462,7 +475,6 @@ namespace UnityToolKit
                     p.GenerateOtherPositions(i == 0 ? p : positions[i - 1], positions);
                     positions[i] = p;
                 }
-           
             }
 
             for (int i = 0; i < Count; i++)
