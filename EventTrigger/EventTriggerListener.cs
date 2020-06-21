@@ -7,14 +7,17 @@ namespace UnityToolKit.EventTrigger
     using UnityEngine.EventSystems;
 
     public class EventTriggerListener : MonoBehaviour, IPointerClickHandler, IPointerDownHandler, IPointerEnterHandler,
-        IPointerExitHandler, IPointerUpHandler, IDragHandler
+        IPointerExitHandler, IPointerUpHandler, IDragHandler, IBeginDragHandler, IEndDragHandler
+
     {
         public event Action<GameObject, PointerEventData> OnClick;
         public event Action<GameObject, PointerEventData> OnDown;
         public event Action<GameObject, PointerEventData> OnEnter;
         public event Action<GameObject, PointerEventData> OnExit;
         public event Action<GameObject, PointerEventData> OnUp;
-        public event Action<GameObject, PointerEventData> OnDragging;
+        public event Action<GameObject, PointerEventData> OnDragging, OnBeinDragCallback, OnEndDragCallback;
+
+        private bool IsDragging;
 
         public static EventTriggerListener Get(GameObject go)
         {
@@ -45,11 +48,15 @@ namespace UnityToolKit.EventTrigger
 
         public void OnPointerUp(PointerEventData eventData)
         {
-            if (OnUp != null) OnUp(gameObject, eventData);
+            if (OnUp != null && !IsDragging) OnUp(gameObject, eventData);
+
+            IsDragging = false;
         }
 
         public void OnDrag(PointerEventData eventData)
         {
+            IsDragging = true;
+
             if (OnDragging != null) OnDragging(gameObject, eventData);
         }
 
@@ -58,6 +65,16 @@ namespace UnityToolKit.EventTrigger
         {
             this.OnDown = onPointDown;
             this.OnUp = onPointUp;
+        }
+
+        public void OnBeginDrag(PointerEventData eventData)
+        {
+            if (OnBeinDragCallback != null) OnBeinDragCallback(gameObject, eventData);
+        }
+
+        public void OnEndDrag(PointerEventData eventData)
+        {
+            if (OnEndDragCallback != null) OnEndDragCallback(gameObject, eventData);
         }
     }
 }
