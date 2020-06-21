@@ -92,10 +92,12 @@ public class LineMeshGeneratorTest : MonoBehaviour
             }
         }
     }
-
+#if UNITY_EDITOR
     private void OnDrawGizmos()
     {
         if (line != null)
             line.DrawGizmos(this.transform);
     }
+
+#endif
 }
