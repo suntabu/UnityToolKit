@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Random = UnityEngine.Random;
 
 namespace UnityToolKit.Utils
 {
@@ -46,7 +47,7 @@ namespace UnityToolKit.Utils
 
             return default(T);
         }
-        
+
         public static IEnumerable<TSource> DistinctBy<TSource, TKey>(this IEnumerable<TSource> source,
             Func<TSource, TKey> keySelector)
         {
@@ -211,6 +212,22 @@ namespace UnityToolKit.Utils
             Rect rect = new Rect(x, y, tw, th);
 
             return rect;
+        }
+
+        public static long GetTimeVersion(this DateTime time)
+        {
+            return long.Parse(string.Format("{0:0000}{1:00}{2:00}{3:00}{4:00}{5:00}", time.Year, time.Month, time.Day,
+                time.Hour, time.Minute, time.Second));
+        }
+
+        public static Color GetRandomColor(this Color main, float range, bool randomAlpha = false)
+        {
+            var r = Mathf.Clamp(main.r + Random.Range(-range, range), 0, 1f);
+            var g = Mathf.Clamp(main.g + Random.Range(-range, range), 0, 1f);
+            var b = Mathf.Clamp(main.b + Random.Range(-range, range), 0, 1f);
+            if (randomAlpha)
+                main.a = Mathf.Clamp(main.a + Random.Range(-range, range), 0, 1f);
+            return new Color(r, g, b, main.a);
         }
     }
 }

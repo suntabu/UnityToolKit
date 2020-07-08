@@ -32,7 +32,7 @@ namespace UnityToolKit.Singleton
                         Debug.LogWarning("No instance of " + typeof(T).ToString() + ", a temporary one is created.");
 
                         isTemporaryInstance = true;
-                        m_Instance = new GameObject("Temp Instance of " + typeof(T).ToString(), typeof(T))
+                        m_Instance = new GameObject(typeof(T).ToString(), typeof(T))
                             .GetComponent<T>();
 
                         // Problem during the creation, this should not happen
